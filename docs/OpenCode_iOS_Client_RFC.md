@@ -39,7 +39,7 @@
 
 - 最低 iOS 17（使用 Observation 框架）
 - 不引入本地 AI 推理、文件系统或 shell 能力
-- 支持局域网直连与 SSH tunnel 远程访问；公网场景要求 HTTPS 或 SSH 转发
+- 支持局域网直连、Tailscale MagicDNS 与 SSH tunnel 远程访问；公网（非 Tailscale）要求 HTTPS 或 SSH 转发。Tailscale（`*.ts.net`）豁免 ATS 例外，允许 HTTP；Settings 中 Tailscale + HTTP 时协议显示灰色，其他 WAN + HTTP 显示红色，info 图标悬停说明中英双语
 
 ---
 

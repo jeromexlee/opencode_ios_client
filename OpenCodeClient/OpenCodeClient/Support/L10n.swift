@@ -185,6 +185,7 @@ enum L10n {
         case errorUsingLanHttp
         case helpLanHttp
         case helpWanHttp
+        case helpTailscaleHttp
 
         case activityRetrying
         case activityThinking
@@ -378,6 +379,7 @@ enum L10n {
         Key.errorUsingLanHttp.rawValue: "Using HTTP on LAN",
         Key.helpLanHttp.rawValue: "LAN: HTTP is allowed only on trusted local networks.",
         Key.helpWanHttp.rawValue: "WAN: HTTPS is required. HTTP will be blocked.",
+        Key.helpTailscaleHttp.rawValue: "Tailscale does not require HTTPS; other WAN addresses still require HTTPS.",
 
         Key.activityRetrying.rawValue: "Retrying",
         Key.activityThinking.rawValue: "Thinking",
@@ -571,6 +573,7 @@ enum L10n {
         Key.errorInvalidBaseURL.rawValue: "无效的 URL",
         Key.helpLanHttp.rawValue: "LAN: HTTP 允许，但建议仅在可信局域网内使用。HTTP 不安全。",
         Key.helpWanHttp.rawValue: "WAN: 需要 HTTPS（HTTP 会被阻止）。HTTP 不安全。",
+        Key.helpTailscaleHttp.rawValue: "对于 Tailscale 来说不要求 HTTPS，但是对于其他广域网还是要求 HTTPS。",
 
         Key.activityRetrying.rawValue: "重试中",
         Key.activityThinking.rawValue: "思考中",
@@ -619,7 +622,8 @@ enum L10n {
         return t(.toolOpenInFileTree, path)
     }
 
-    static func helpForURLScheme(_ isLocal: Bool) -> String {
+    static func helpForURLScheme(isLocal: Bool, isTailscale: Bool) -> String {
+        if isTailscale { return t(.helpTailscaleHttp) }
         return isLocal ? t(.helpLanHttp) : t(.helpWanHttp)
     }
 

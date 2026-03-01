@@ -22,6 +22,8 @@ final class AppState {
         let scheme: String?
         let host: String?
         let isLocal: Bool
+        /// Tailscale MagicDNS (*.ts.net) — ATS exception, HTTP allowed.
+        let isTailscale: Bool
         let isAllowed: Bool
         let warning: String?
     }
@@ -30,7 +32,7 @@ final class AppState {
     nonisolated static func serverURLInfo(_ raw: String) -> ServerURLInfo {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            return .init(raw: raw, normalized: nil, scheme: nil, host: nil, isLocal: true, isAllowed: false, warning: L10n.t(.errorServerAddressEmpty))
+            return .init(raw: raw, normalized: nil, scheme: nil, host: nil, isLocal: true, isTailscale: false, isAllowed: false, warning: L10n.t(.errorServerAddressEmpty))
         }
 
         func parseHost(_ s: String) -> String? {
@@ -66,13 +68,15 @@ final class AppState {
             return isLocal ? "http" : "https"
         }()
 
-        if scheme == "http", !isLocal {
+        let isTailscale = host?.hasSuffix(".ts.net") ?? false
+        if scheme == "http", !isLocal, !isTailscale {
             return .init(
                 raw: raw,
                 normalized: hasScheme ? trimmed : nil,
                 scheme: "http",
                 host: host,
                 isLocal: false,
+                isTailscale: false,
                 isAllowed: false,
                 warning: L10n.t(.errorWanRequiresHttps)
             )
@@ -86,8 +90,9 @@ final class AppState {
             scheme: parsed?.scheme,
             host: parsed?.host,
             isLocal: isLocal,
+            isTailscale: isTailscale,
             isAllowed: parsed != nil,
-            warning: parsed == nil ? L10n.t(.errorInvalidBaseURL) : (scheme == "http" ? L10n.t(.errorUsingLanHttp) : nil)
+            warning: parsed == nil ? L10n.t(.errorInvalidBaseURL) : (scheme == "http" && !isTailscale ? L10n.t(.errorUsingLanHttp) : nil)
         )
     }
     private var _serverURL: String = APIClient.defaultServer

@@ -267,10 +267,11 @@ Diff 渲染采用 unified diff 格式（类似 GitHub），绿色背景表示新
 
 #### 4.4.1 Server Connection
 
-- Server Address：文本输入框，格式 `ip:port`，默认 `127.0.0.1:4096`
+- Server Address：文本输入框，格式 `ip:port` 或 `http(s)://host:port`，默认 `127.0.0.1:4096`
 - Username：可选，默认 `opencode`
 - Password：可选，存入 Keychain
 - 连接状态指示：显示 Connected / Disconnected / Connecting
+- 协议 (Scheme) 展示：当使用 HTTP 且未启用 SSH tunnel 时，显示协议（HTTP/HTTPS）与 info 图标。Tailscale MagicDNS（`*.ts.net`）允许 HTTP，协议与图标显示灰色；其他 WAN 要求 HTTPS，协议与图标显示红色。info 悬停说明中英双语：Tailscale 不要求 HTTPS，其他广域网仍要求 HTTPS。
 - "Test Connection" 按钮：调用 `GET /global/health` 验证连接
 
 #### 4.4.2 SSH Tunnel（远程访问）
@@ -654,7 +655,7 @@ App 进入前台
 
 **Server API 稳定性**：OpenCode 的 HTTP API 目前没有正式的版本承诺（没有 `/v1/` 前缀）。Server 更新可能引入 breaking changes。建议 iOS 端对 API 响应做防御性解析，对未知字段忽略而非 crash。
 
-**安全**：初期 App 仅用于本地局域网，安全风险较低。如果后续支持公网访问，需要考虑 TLS、token-based auth 等增强方案。当前的 Basic Auth over HTTP 在局域网环境下可接受，但不适合公网暴露。
+**安全**：初期 App 仅用于本地局域网，安全风险较低。如果后续支持公网访问，需要考虑 TLS、token-based auth 等增强方案。当前的 Basic Auth over HTTP 在局域网环境下可接受，但不适合公网暴露。**ATS 例外**：局域网（私有 IP、localhost、.local）与 Tailscale MagicDNS（`*.ts.net`）允许 HTTP；其他 WAN 强制 HTTPS。Info.plist 中 `NSExceptionDomains` 对 `ts.net` 豁免。
 
 ## 10. 已决事项
 

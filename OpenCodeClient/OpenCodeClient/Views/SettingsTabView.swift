@@ -34,13 +34,14 @@ struct SettingsTabView: View {
                         .textContentType(.password)
 
                     if let scheme = info.scheme {
-                        let shouldWarnInsecureHTTP = scheme == "http" && !sshConfig.isEnabled
+                        let shouldWarnInsecureHTTP = scheme == "http" && !sshConfig.isEnabled && !info.isTailscale
+                        let showSchemeInfo = scheme == "http" && !sshConfig.isEnabled
                         HStack(spacing: 4) {
                             LabeledContent(L10n.t(.settingsScheme), value: scheme.uppercased())
                                 .foregroundStyle(shouldWarnInsecureHTTP ? .red : .secondary)
-                            if shouldWarnInsecureHTTP {
+                            if showSchemeInfo {
                                 Image(systemName: "info.circle.fill")
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(shouldWarnInsecureHTTP ? .red : .secondary)
                                     .help(schemeHelpText(info: info))
                             }
                         }
@@ -401,7 +402,7 @@ struct SettingsTabView: View {
     }
 
     private func schemeHelpText(info: AppState.ServerURLInfo) -> String {
-        L10n.helpForURLScheme(info.isLocal)
+        L10n.helpForURLScheme(isLocal: info.isLocal, isTailscale: info.isTailscale)
     }
 }
 
