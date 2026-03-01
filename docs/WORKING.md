@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- **最后更新**：2026-02-25
+- **最后更新**：2026-03-01
 - **Phase**：Phase 3 完成 + SSH Tunnel 基础设施 + Agent 选择功能 + Project 选择功能（已完成）
 - **编译**：✅ 通过（iphonesimulator / generic destination）
 - **测试**：✅ 所有测试通过（含 Project 选择相关测试）
@@ -210,6 +210,8 @@
 9. **Simulator SpringBoard 崩溃（非 App 进程）**：最新崩溃日志显示 `Process: SpringBoard`，线程 `com.apple.xpc.activity.com.apple.SplashBoard` 触发 `dispatch_assert_queue`，属于模拟器系统组件异常，不是 `OpenCodeClient` 进程崩溃。结论：与当前业务代码改动无直接因果；排查优先使用“重启/抹除 simulator + 重新安装 app”路径。
 
 10. **View Public Key 部分场景仍空白**：在 SSH enabled 但连接失败时，旧逻辑会先读本地缓存公钥，存在命中空字符串导致 sheet 为空的风险。修复：打开 sheet 时统一通过 `generateOrGetPublicKey()` 获取并做 trim + empty guard，异常时走错误弹窗。
+
+11. **Tailscale MagicDNS 需 ATS 例外**：公司策略要求所有 host 使用 ATS/HTTPS，但 Tailscale MagicDNS（`*.ts.net`）解析的服务器通常跑 HTTP。修复：在 Info.plist 的 `NSAppTransportSecurity` 下添加 `NSExceptionDomains` → `ts.net` → `NSExceptionAllowsInsecureHTTPLoads: true`，仅对 Tailscale 域名豁免 HTTPS 要求；其他域名仍受 ATS 约束。
 
 ## 决策记录
 
