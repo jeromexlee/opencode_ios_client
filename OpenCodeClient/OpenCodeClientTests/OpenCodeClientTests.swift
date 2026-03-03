@@ -1451,3 +1451,96 @@ struct ProjectSelectionTests {
     }
 }
 
+// MARK: - Session Tree Tests
+
+struct SessionTreeTests {
+
+    private func makeSession(id: String, parentID: String? = nil, updated: Int, archived: Int? = nil) -> Session {
+        Session(
+            id: id,
+            slug: id,
+            projectID: "p1",
+            directory: "/tmp",
+            parentID: parentID,
+            title: id,
+            version: "1",
+            time: .init(created: 0, updated: updated, archived: archived),
+            share: nil,
+            summary: nil
+        )
+    }
+
+    @Test func sessionTreeBuildsHierarchy() {
+        let sessions = [
+            makeSession(id: "parent", updated: 100),
+            makeSession(id: "child1", parentID: "parent", updated: 90),
+            makeSession(id: "child2", parentID: "parent", updated: 80),
+        ]
+        let tree = AppState.buildSessionTree(from: sessions)
+        #expect(tree.count == 1)
+        #expect(tree[0].session.id == "parent")
+        #expect(tree[0].children.count == 2)
+        #expect(tree[0].children[0].session.id == "child1")
+        #expect(tree[0].children[1].session.id == "child2")
+    }
+
+    @Test func sessionTreeOrphanedChildrenBecomeRoots() {
+        let sessions = [
+            makeSession(id: "root1", updated: 100),
+            makeSession(id: "orphan", parentID: "missing-parent", updated: 90),
+        ]
+        let tree = AppState.buildSessionTree(from: sessions)
+        #expect(tree.count == 2)
+    }
+
+    @Test func sessionTreeSortsRootsByUpdatedDesc() {
+        let sessions = [
+            makeSession(id: "older", updated: 50),
+            makeSession(id: "newer", updated: 100),
+            makeSession(id: "middle", updated: 75),
+        ]
+        let tree = AppState.buildSessionTree(from: sessions)
+        #expect(tree.count == 3)
+        #expect(tree[0].session.id == "newer")
+        #expect(tree[1].session.id == "middle")
+        #expect(tree[2].session.id == "older")
+    }
+
+    @Test func sessionTreeMultiLevel() {
+        let sessions = [
+            makeSession(id: "root", updated: 100),
+            makeSession(id: "child", parentID: "root", updated: 90),
+            makeSession(id: "grandchild", parentID: "child", updated: 80),
+        ]
+        let tree = AppState.buildSessionTree(from: sessions)
+        #expect(tree.count == 1)
+        #expect(tree[0].children.count == 1)
+        #expect(tree[0].children[0].children.count == 1)
+        #expect(tree[0].children[0].children[0].session.id == "grandchild")
+    }
+
+    @Test func sessionTreeEmptyInput() {
+        let tree = AppState.buildSessionTree(from: [])
+        #expect(tree.isEmpty)
+    }
+
+    @Test func sessionTreeExcludesArchivedWhenFiltered() {
+        let sessions = [
+            makeSession(id: "active", updated: 100),
+            makeSession(id: "archived", updated: 90, archived: 1000),
+        ]
+        let filtered = sessions.filter { $0.time.archived == nil }
+        let tree = AppState.buildSessionTree(from: filtered)
+        #expect(tree.count == 1)
+        #expect(tree[0].session.id == "active")
+    }
+
+    @Test @MainActor func toggleSessionCollapsedAddsAndRemovesSessionID() {
+        let state = AppState()
+        #expect(state.collapsedSessionIDs.isEmpty)
+        state.toggleSessionCollapsed("s1")
+        #expect(state.collapsedSessionIDs.contains("s1"))
+        state.toggleSessionCollapsed("s1")
+        #expect(state.collapsedSessionIDs.contains("s1") == false)
+    }
+}

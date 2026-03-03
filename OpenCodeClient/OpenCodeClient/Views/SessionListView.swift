@@ -24,25 +24,7 @@ struct SessionListView: View {
                     )
                 } else {
                     List {
-                        ForEach(state.sortedSessions) { session in
-                            SessionRowView(
-                                session: session,
-                                status: state.sessionStatuses[session.id],
-                                isSelected: state.currentSessionID == session.id,
-                                isDeleting: deletingSessionID == session.id
-                            ) {
-                                selectSession(session)
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button {
-                                    pendingDeleteSession = session
-                                } label: {
-                                    Label(L10n.t(.sessionsDelete), systemImage: "trash")
-                                }
-                                .tint(.red)
-                                .disabled(deletingSessionID != nil)
-                            }
-                        }
+                        sessionNodes(state.sessionTree)
                     }
                     .refreshable {
                         await state.refreshSessions()
@@ -123,6 +105,37 @@ struct SessionListView: View {
         dismiss()
     }
 
+    private func sessionNodes(_ nodes: [SessionNode], depth: Int = 0) -> AnyView {
+        AnyView(
+            ForEach(nodes) { node in
+                SessionRowView(
+                    session: node.session,
+                    status: state.sessionStatuses[node.session.id],
+                    isSelected: state.currentSessionID == node.session.id,
+                    isDeleting: deletingSessionID == node.session.id,
+                    depth: depth,
+                    hasChildren: !node.children.isEmpty,
+                    isCollapsed: state.collapsedSessionIDs.contains(node.session.id),
+                    onSelect: { selectSession(node.session) },
+                    onToggleCollapse: { state.toggleSessionCollapsed(node.session.id) }
+                )
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button {
+                        pendingDeleteSession = node.session
+                    } label: {
+                        Label(L10n.t(.sessionsDelete), systemImage: "trash")
+                    }
+                    .tint(.red)
+                    .disabled(deletingSessionID != nil)
+                }
+
+                if !state.collapsedSessionIDs.contains(node.session.id) {
+                    sessionNodes(node.children, depth: depth + 1)
+                }
+            }
+        )
+    }
+
     private func confirmDelete(_ session: Session) {
         guard deletingSessionID == nil else { return }
         deletingSessionID = session.id
@@ -142,7 +155,11 @@ struct SessionRowView: View {
     let status: SessionStatus?
     let isSelected: Bool
     let isDeleting: Bool
+    var depth: Int = 0
+    var hasChildren: Bool = false
+    var isCollapsed: Bool = false
     let onSelect: () -> Void
+    var onToggleCollapse: (() -> Void)? = nil
     
     private var isBusy: Bool {
         guard let status else { return false }
@@ -150,38 +167,57 @@ struct SessionRowView: View {
     }
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(session.title.isEmpty ? L10n.t(.sessionsUntitled) : session.title)
-                        .font(.headline)
-                        .foregroundStyle(isBusy ? .blue : .primary)
-
-                    HStack(spacing: 8) {
-                        Text(formattedDate(session.time.updated))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        if let status {
-                            Text(statusLabel(status))
-                                .font(.caption)
-                                .foregroundStyle(statusColor(status))
-                        }
-                    }
-                }
-                Spacer()
-                if isDeleting {
-                    ProgressView()
-                        .controlSize(.small)
-                } else if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
+        HStack {
+            if hasChildren {
+                Button {
+                    onToggleCollapse?()
+                } label: {
+                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                .buttonStyle(.plain)
+                .frame(width: 12)
+            } else {
+                Color.clear
+                    .frame(width: 12)
             }
-            .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.title.isEmpty ? L10n.t(.sessionsUntitled) : session.title)
+                    .font(depth > 0 ? .subheadline : .headline)
+                    .foregroundStyle(depth > 0 ? Color.secondary : (isBusy ? Color.blue : Color.primary))
+
+                HStack(spacing: 8) {
+                    Text(formattedDate(session.time.updated))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let status {
+                        Text(statusLabel(status))
+                            .font(.caption)
+                            .foregroundStyle(statusColor(status))
+                    }
+                }
+            }
+
+            Spacer()
+
+            if isDeleting {
+                ProgressView()
+                    .controlSize(.small)
+            } else if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
         }
-        .disabled(isDeleting)
-        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+        .padding(.leading, CGFloat(depth) * 24)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isDeleting else { return }
+            onSelect()
+        }
         .listRowBackground(isSelected ? Color.blue.opacity(0.08) : Color.clear)
     }
 

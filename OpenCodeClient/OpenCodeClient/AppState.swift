@@ -8,6 +8,12 @@ import CryptoKit
 import Observation
 import os
 
+struct SessionNode: Identifiable {
+    let session: Session
+    let children: [SessionNode]
+    var id: String { session.id }
+}
+
 @Observable
 @MainActor
 final class AppState {
@@ -383,6 +389,10 @@ final class AppState {
             .filter { showArchivedSessions || $0.time.archived == nil }
             .sorted { $0.time.updated > $1.time.updated }
     }
+    var sessionTree: [SessionNode] {
+        let filtered = sessions.filter { showArchivedSessions || $0.time.archived == nil }
+        return Self.buildSessionTree(from: filtered)
+    }
     var currentSessionID: String? { get { sessionStore.currentSessionID } set { sessionStore.currentSessionID = newValue } }
     var sessionStatuses: [String: SessionStatus] { get { sessionStore.sessionStatuses } set { sessionStore.sessionStatuses = newValue } }
 
@@ -419,6 +429,7 @@ final class AppState {
         }
     }
     private var _showArchivedSessions: Bool = false
+    var collapsedSessionIDs: Set<String> = []
 
     var projects: [Project] = []
     var isLoadingProjects: Bool = false
@@ -573,6 +584,43 @@ final class AppState {
             .sorted { $0.time.updated > $1.time.updated }
             .first?
             .id
+    }
+
+    nonisolated static func buildSessionTree(from sessions: [Session]) -> [SessionNode] {
+        let sessionIDs = Set(sessions.map(\.id))
+        let childrenMap = Dictionary(grouping: sessions, by: \.parentID)
+
+        func buildNodes(parentID: String?) -> [SessionNode] {
+            (childrenMap[parentID] ?? [])
+                .sorted { $0.time.updated > $1.time.updated }
+                .map { session in
+                    SessionNode(session: session, children: buildNodes(parentID: session.id))
+                }
+        }
+
+        var roots = buildNodes(parentID: nil)
+
+        let orphans = sessions
+            .filter { session in
+                guard let pid = session.parentID else { return false }
+                return !sessionIDs.contains(pid)
+            }
+            .sorted { $0.time.updated > $1.time.updated }
+            .map { session in
+                SessionNode(session: session, children: buildNodes(parentID: session.id))
+            }
+
+        roots.append(contentsOf: orphans)
+        roots.sort { $0.session.time.updated > $1.session.time.updated }
+        return roots
+    }
+
+    func toggleSessionCollapsed(_ sessionID: String) {
+        if collapsedSessionIDs.contains(sessionID) {
+            collapsedSessionIDs.remove(sessionID)
+        } else {
+            collapsedSessionIDs.insert(sessionID)
+        }
     }
 
     func setSelectedModelIndex(_ index: Int) {

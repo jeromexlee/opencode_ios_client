@@ -4,16 +4,24 @@
 
 ## 当前状态
 
-- **最后更新**：2026-03-01
-- **Phase**：Phase 3 完成 + SSH Tunnel 基础设施 + Agent 选择功能 + Project 选择功能（已完成）
+- **最后更新**：2026-03-03
+- **Phase**：Phase 3 完成 + SSH Tunnel 基础设施 + Agent 选择功能 + Project 选择功能 + Session 树状层级视图（已完成）
 - **编译**：✅ 通过（iphonesimulator / generic destination）
-- **测试**：✅ 所有测试通过（含 Project 选择相关测试）
+- **测试**：✅ 所有测试通过（含 Session 树状层级相关测试）
 
 ## 进行中
 
 （无）
 
 ## 已完成（近期）
+
+- [x] **Session 树状层级视图（2026-03-03）**：
+  - [x] 背景：agent 派出 background sub-agent 时会创建子 session（`Session.parentID` 指向父 session），此前所有 session 平级显示导致列表 cluttered
+  - [x] 实现：`SessionNode` 树结构 + `AppState.buildSessionTree(from:)` 静态方法，按 `parentID` 递归构建层级；孤儿 session（parentID 指向不存在的 session）自动提升为根节点
+  - [x] UI：子 session 缩进（depth × 24pt）、字号缩小（`.subheadline`）、颜色变淡（`.secondary`）；父 session 左侧显示 chevron 折叠/展开按钮
+  - [x] `collapsedSessionIDs: Set<String>` 跟踪折叠状态，`toggleSessionCollapsed()` 切换
+  - [x] iPhone（`SessionListView`）和 iPad（`SplitSidebarView.SessionsSidebarList`）同步更新为树状递归渲染
+  - [x] 单元测试：7 个测试覆盖层级构建、孤儿处理、排序、多级嵌套、空输入、归档过滤、折叠状态切换
 
 - [x] **Session 创建仅限 Server default（2026-02-25）**：
   - [x] 根因：`POST /session` 不支持传 directory，新 session 始终落在 server 的 current project；iOS Project 选择器只过滤列表，不改变创建目标
