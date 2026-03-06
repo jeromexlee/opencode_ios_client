@@ -17,7 +17,7 @@ OpenCode 是一个开源的 AI 编程 Agent，采用 **Client/Server 架构**。
 | **opencode-ai/opencode** | 社区 fork，已归档，项目已迁移至 Crush |
 | **chris-tse/opencode-web** | 第三方 Web UI，基于 OpenCode API 的 React 前端 |
 
-本 repo 中 clone 的为 `opencode-ai/opencode`（社区版），**不含 serve/web 命令及 HTTP API**。完整 API 能力以官方 `anomalyco/opencode` 为准。
+本 repo 中 clone 的为 `anomalyco/opencode`（官方主仓库），含 serve/web 命令及完整 HTTP API。
 
 ---
 
