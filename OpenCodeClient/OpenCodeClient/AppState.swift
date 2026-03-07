@@ -1064,15 +1064,26 @@ final class AppState {
         let base = aiBuilderBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let prompt = aiBuilderCustomPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let terms = aiBuilderTerminology.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resp = try await AIBuildersAudioClient.transcribe(
-            baseURL: base,
-            token: token,
-            audioFileURL: audioFileURL,
-            language: language,
-            prompt: prompt.isEmpty ? nil : prompt,
-            terms: terms.isEmpty ? nil : terms
-        )
-        return resp.text
+        let start = ProcessInfo.processInfo.systemUptime
+        let fileName = audioFileURL.lastPathComponent.isEmpty ? "audio.m4a" : audioFileURL.lastPathComponent
+        Self.logger.notice("[SpeechProfile] appState.transcribe begin file=\(fileName, privacy: .public)")
+        do {
+            let resp = try await AIBuildersAudioClient.transcribe(
+                baseURL: base,
+                token: token,
+                audioFileURL: audioFileURL,
+                language: language,
+                prompt: prompt.isEmpty ? nil : prompt,
+                terms: terms.isEmpty ? nil : terms
+            )
+            let elapsedMs = max(0, Int((ProcessInfo.processInfo.systemUptime - start) * 1000))
+            Self.logger.notice("[SpeechProfile] appState.transcribe done ms=\(elapsedMs, privacy: .public) textChars=\(resp.text.count, privacy: .public) requestID=\(resp.requestID, privacy: .public)")
+            return resp.text
+        } catch {
+            let elapsedMs = max(0, Int((ProcessInfo.processInfo.systemUptime - start) * 1000))
+            Self.logger.error("[SpeechProfile] appState.transcribe failed ms=\(elapsedMs, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            throw error
+        }
     }
 
     func testAIBuilderConnection() async {

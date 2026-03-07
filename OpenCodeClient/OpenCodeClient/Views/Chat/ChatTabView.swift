@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import os
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -28,6 +29,11 @@ private enum MessageGroupItem: Identifiable {
 }
 
 struct ChatTabView: View {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "OpenCodeClient",
+        category: "SpeechProfile"
+    )
+
     @Bindable var state: AppState
     var showSettingsInToolbar: Bool = false
     var onSettingsTap: (() -> Void)?
@@ -513,16 +519,23 @@ struct ChatTabView: View {
 
     private func toggleRecording() async {
         if isRecording {
+            let stopStart = ProcessInfo.processInfo.systemUptime
             guard let url = recorder.stop() else {
                 isRecording = false
+                Self.logger.error("[SpeechProfile] recorder stop failed: missing file URL")
                 return
             }
             isRecording = false
+            let fileBytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+            Self.logger.notice("[SpeechProfile] recorder stopped ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - stopStart) * 1000)), privacy: .public) file=\(url.lastPathComponent, privacy: .public) bytes=\(fileBytes, privacy: .public)")
+
             isTranscribing = true
             defer { isTranscribing = false }
+            let transcribeStart = ProcessInfo.processInfo.systemUptime
             do {
                 let transcript = try await state.transcribeAudio(audioFileURL: url)
                 let cleaned = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                Self.logger.notice("[SpeechProfile] chat transcribe done ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - transcribeStart) * 1000)), privacy: .public) chars=\(cleaned.count, privacy: .public)")
                 if !cleaned.isEmpty {
                     if inputText.isEmpty {
                         inputText = cleaned
@@ -531,6 +544,7 @@ struct ChatTabView: View {
                     }
                 }
             } catch {
+                Self.logger.error("[SpeechProfile] chat transcribe failed ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - transcribeStart) * 1000)), privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                 speechError = error.localizedDescription
             }
         } else {
@@ -548,15 +562,20 @@ struct ChatTabView: View {
                 return
             }
 
+            let permissionStart = ProcessInfo.processInfo.systemUptime
             let allowed = await recorder.requestPermission()
+            Self.logger.notice("[SpeechProfile] microphone permission allowed=\(allowed, privacy: .public) ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - permissionStart) * 1000)), privacy: .public)")
             guard allowed else {
                 speechError = L10n.t(.chatMicrophoneDenied)
                 return
             }
+            let startRecordingStart = ProcessInfo.processInfo.systemUptime
             do {
                 try recorder.start()
                 isRecording = true
+                Self.logger.notice("[SpeechProfile] recorder started ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - startRecordingStart) * 1000)), privacy: .public)")
             } catch {
+                Self.logger.error("[SpeechProfile] recorder start failed error=\(error.localizedDescription, privacy: .public)")
                 speechError = error.localizedDescription
             }
         }
