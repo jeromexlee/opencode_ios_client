@@ -876,6 +876,23 @@ struct SpeechRecognitionDefaultsTests {
     }
 }
 
+struct AIBuildersAudioClientTests {
+
+    @Test func normalizedBaseURLAddsHTTPSWhenMissing() {
+        let url = AIBuildersAudioClient.normalizedBaseURL(from: "space.ai-builders.com/backend")
+        #expect(url.absoluteString == "https://space.ai-builders.com/backend")
+    }
+
+    @Test func realtimeWebSocketURLPreservesHostAndSwitchesScheme() throws {
+        let baseURL = URL(string: "https://space.ai-builders.com/backend")!
+        let websocketURL = try AIBuildersAudioClient.realtimeWebSocketURL(
+            baseURL: baseURL,
+            relativePath: "/v1/audio/realtime/ws?ticket=abc123"
+        )
+        #expect(websocketURL.absoluteString == "wss://space.ai-builders.com/v1/audio/realtime/ws?ticket=abc123")
+    }
+}
+
 // MARK: - APIConstants Tests
 
 struct APIConstantsTests {
