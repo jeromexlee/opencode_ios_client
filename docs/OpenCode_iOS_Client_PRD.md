@@ -130,6 +130,7 @@ iPhone 采用底部 Tab Bar，三个 Tab：
 | GLM-5 | `zai-coding-plan` | `glm-5` |
 | Opus 4.6 | `anthropic` | `claude-opus-4-6` |
 | Sonnet 4.6 | `anthropic` | `claude-sonnet-4-6` |
+| GPT-5.4 | `openai` | `gpt-5.4` |
 | GPT-5.3 Codex | `openai` | `gpt-5.3-codex` |
 | GPT-5.2 | `openai` | `gpt-5.2` |
 | Gemini 3.1 Pro | `google` | `gemini-3.1-pro-preview` |

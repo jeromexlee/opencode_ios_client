@@ -40,7 +40,7 @@
   - [x] 实现 `AgentInfo` 数据模型（含 mode 过滤：primary/all 显示，subagent 隐藏）
   - [x] 实现 `APIClient.agents()` 方法
   - [x] 更新 `AppState`：添加 agents 列表（prefill 5 个默认 agent）、selectedAgentIndex、loadAgents()
-  - [x] 更新模型列表：GLM-5（默认）/ Opus 4.6 / Sonnet 4.6 / GPT-5.3 Codex / GPT-5.2 / Gemini 3.1 Pro / Gemini 3 Flash
+  - [x] 更新模型列表：GLM-5（默认）/ Opus 4.6 / Sonnet 4.6 / GPT-5.4 / GPT-5.3 Codex / GPT-5.2 / Gemini 3.1 Pro / Gemini 3 Flash
   - [x] 更新 `ChatToolbarView`：chip 横向滚动改为下拉列表（Model + Agent）
   - [x] 更新 `promptAsync`：传递选中的 agent
   - [x] 单元测试：Agent API 解码 + mode 过滤测试
@@ -235,12 +235,13 @@
 - **GET /agent**：✅ 返回 `[AgentInfo]`，含 name/description/mode/hidden/native 字段。iOS 端过滤 mode=subagent。
 - **Import from Server**：依赖 config/providers，解析修复后应可正常导入。
 
-当前模型预设（7 个）：
+当前模型预设（8 个）：
 | 显示名称 | providerID | modelID |
 |----------|------------|---------|
 | GLM-5（默认） | `zai-coding-plan` | `glm-5` |
 | Opus 4.6 | `anthropic` | `claude-opus-4-6` |
 | Sonnet 4.6 | `anthropic` | `claude-sonnet-4-6` |
+| GPT-5.4 | `openai` | `gpt-5.4` |
 | GPT-5.3 Codex | `openai` | `gpt-5.3-codex` |
 | GPT-5.2 | `openai` | `gpt-5.2` |
 | Gemini 3.1 Pro | `google` | `gemini-3.1-pro-preview` |
