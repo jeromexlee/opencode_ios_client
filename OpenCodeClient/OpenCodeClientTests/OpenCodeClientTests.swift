@@ -912,6 +912,14 @@ struct AIBuildersAudioClientTests {
         let url = AIBuildersAudioClient.buildAPIURL(base: baseNoMount, path: "/v1/audio/realtime/sessions")
         #expect(url?.absoluteString == "https://space.ai-builders.com/v1/audio/realtime/sessions")
     }
+
+    @Test func mergedSpeechInputOmitsLeadingSpaceForEmptyPrefix() {
+        #expect(ChatTabView.mergedSpeechInput(prefix: "", transcript: " hello world ") == "hello world")
+    }
+
+    @Test func mergedSpeechInputKeepsSeparatorForExistingInput() {
+        #expect(ChatTabView.mergedSpeechInput(prefix: "Existing draft", transcript: "partial") == "Existing draft partial")
+    }
 }
 
 // MARK: - APIConstants Tests

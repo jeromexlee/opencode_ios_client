@@ -34,6 +34,13 @@ struct ChatTabView: View {
         category: "SpeechProfile"
     )
 
+    static func mergedSpeechInput(prefix: String, transcript: String) -> String {
+        let cleanedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedTranscript.isEmpty else { return prefix }
+        guard !prefix.isEmpty else { return cleanedTranscript }
+        return prefix + " " + cleanedTranscript
+    }
+
     @Bindable var state: AppState
     var showSettingsInToolbar: Bool = false
     var onSettingsTap: (() -> Void)?
@@ -579,12 +586,12 @@ struct ChatTabView: View {
             do {
                 let transcript = try await state.transcribeAudio(audioFileURL: url) { partial in
                     Task { @MainActor in
-                        inputText = prefix + (partial.isEmpty ? "" : " " + partial)
+                        inputText = Self.mergedSpeechInput(prefix: prefix, transcript: partial)
                     }
                 }
                 let cleaned = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
                 Self.logger.notice("[SpeechProfile] chat transcribe done ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - transcribeStart) * 1000)), privacy: .public) chars=\(cleaned.count, privacy: .public)")
-                inputText = prefix + (cleaned.isEmpty ? "" : " " + cleaned)
+                inputText = Self.mergedSpeechInput(prefix: prefix, transcript: cleaned)
             } catch {
                 Self.logger.error("[SpeechProfile] chat transcribe failed ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - transcribeStart) * 1000)), privacy: .public) error=\(error.localizedDescription, privacy: .public)")
                 inputText = prefix
