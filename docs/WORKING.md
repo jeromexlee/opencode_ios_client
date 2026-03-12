@@ -4,16 +4,34 @@
 
 ## 当前状态
 
-- **最后更新**：2026-03-03
-- **Phase**：Phase 3 完成 + SSH Tunnel 基础设施 + Agent 选择功能 + Project 选择功能 + Session 树状层级视图（已完成）
+- **最后更新**：2026-03-11
+- **Phase**：Phase 3 完成 + Realtime Speech WebSocket（space.ai-builders.com/backend 语音转写已打通）
 - **编译**：✅ 通过（iphonesimulator / generic destination）
-- **测试**：✅ 所有测试通过（含 Session 树状层级相关测试）
+- **测试**：✅ 所有测试通过
 
 ## 进行中
 
 （无）
 
 ## 已完成（近期）
+
+- [x] **语音转写 partial transcript 实时展示（2026-03-11）**：
+  - [x] AIBuildersAudioClient：`transcribe` 新增可选 `onPartialTranscript` 回调，`streamPCMOverRealtimeWebSocket` 收到 `transcript_delta` 时累积并回调
+  - [x] AppState.transcribeAudio：透传 onPartialTranscript
+  - [x] ChatTabView：转写过程中将 partial 实时写入输入框，完成后用 final 替换；失败时恢复 prefix
+
+- [x] **Markdown 大文件/长行崩溃修复（2026-03-11）**：
+  - [x] 根因：MarkdownUI 对超长单行（如 transcript 段落 3000+ 字符）或大文件会 freeze/crash（GH #426、#396）
+  - [x] 修复：FileContentView 在渲染前检测 `maxLineLength > 1500` 或 `totalLength > 60KB`，满足时直接用 RawTextView 跳过 MarkdownUI
+  - [x] MarkdownPreviewView 内保留二次 fallback；loadContent 与 onAppear 保留调试日志
+
+- [x] **Realtime Speech 语音转写修复（2026-03-11）**：
+  - [x] 根因 1：API URL 构造错误——`URL(string: "/v1/...", relativeTo: base)` 会替换 base 的 path，导致 `https://space.ai-builders.com/backend` 请求到 `/v1/...` 而非 `/backend/v1/...`
+  - [x] 修复：`buildAPIURL` 确保 base path 以 `/` 结尾，使相对路径正确追加；session 创建、testConnection 均改用该 helper
+  - [x] 根因 2：m4a 转 PCM 失败——`AVAudioConverter` 对 AAC/m4a 有已知问题，抛出 `nilError`
+  - [x] 修复：改用 `ExtAudioFile` API 读取并转换，直接输出 24kHz 16-bit mono PCM
+  - [x] 新增 `buildAPIURLPreservesMountPath`、`buildAPIURLWithoutMountPath` 单元测试
+  - [x] 增加 SpeechProfile 调试日志（session POST url、ws_url、websocket connect、各步骤失败详情）
 
 - [x] **Session 树状层级视图（2026-03-03）**：
   - [x] 背景：agent 派出 background sub-agent 时会创建子 session（`Session.parentID` 指向父 session），此前所有 session 平级显示导致列表 cluttered

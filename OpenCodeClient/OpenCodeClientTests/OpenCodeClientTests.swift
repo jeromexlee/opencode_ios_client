@@ -876,6 +876,52 @@ struct SpeechRecognitionDefaultsTests {
     }
 }
 
+struct AIBuildersAudioClientTests {
+
+    @Test func normalizedBaseURLAddsHTTPSWhenMissing() {
+        let url = AIBuildersAudioClient.normalizedBaseURL(from: "space.ai-builders.com/backend")
+        #expect(url.absoluteString == "https://space.ai-builders.com/backend")
+    }
+
+    @Test func realtimeWebSocketURLPreservesHostAndSwitchesScheme() throws {
+        let baseURL = URL(string: "https://space.ai-builders.com/backend")!
+        let websocketURL = try AIBuildersAudioClient.realtimeWebSocketURL(
+            baseURL: baseURL,
+            relativePath: "/v1/audio/realtime/ws?ticket=abc123"
+        )
+        #expect(websocketURL.absoluteString == "wss://space.ai-builders.com/v1/audio/realtime/ws?ticket=abc123")
+    }
+
+    @Test func realtimeWebSocketURLWithMountPath() throws {
+        let baseURL = URL(string: "https://space.ai-builders.com/backend")!
+        let websocketURL = try AIBuildersAudioClient.realtimeWebSocketURL(
+            baseURL: baseURL,
+            relativePath: "/backend/v1/audio/realtime/ws?ticket=abc123"
+        )
+        #expect(websocketURL.absoluteString == "wss://space.ai-builders.com/backend/v1/audio/realtime/ws?ticket=abc123")
+    }
+
+    @Test func buildAPIURLPreservesMountPath() throws {
+        let baseWithMount = URL(string: "https://space.ai-builders.com/backend")!
+        let url = AIBuildersAudioClient.buildAPIURL(base: baseWithMount, path: "/v1/audio/realtime/sessions")
+        #expect(url?.absoluteString == "https://space.ai-builders.com/backend/v1/audio/realtime/sessions")
+    }
+
+    @Test func buildAPIURLWithoutMountPath() throws {
+        let baseNoMount = URL(string: "https://space.ai-builders.com")!
+        let url = AIBuildersAudioClient.buildAPIURL(base: baseNoMount, path: "/v1/audio/realtime/sessions")
+        #expect(url?.absoluteString == "https://space.ai-builders.com/v1/audio/realtime/sessions")
+    }
+
+    @Test func mergedSpeechInputOmitsLeadingSpaceForEmptyPrefix() {
+        #expect(ChatTabView.mergedSpeechInput(prefix: "", transcript: " hello world ") == "hello world")
+    }
+
+    @Test func mergedSpeechInputKeepsSeparatorForExistingInput() {
+        #expect(ChatTabView.mergedSpeechInput(prefix: "Existing draft", transcript: "partial") == "Existing draft partial")
+    }
+}
+
 // MARK: - APIConstants Tests
 
 struct APIConstantsTests {
@@ -1542,5 +1588,167 @@ struct SessionTreeTests {
         #expect(state.expandedSessionIDs.contains("s1"))
         state.toggleSessionExpanded("s1")
         #expect(state.expandedSessionIDs.contains("s1") == false)
+    }
+}
+
+struct QuestionModelTests {
+
+    @Test func questionOptionDecoding() throws {
+        let json = """
+        {"label":"React Native","description":"Cross-platform mobile framework"}
+        """
+        let data = json.data(using: .utf8)!
+        let opt = try JSONDecoder().decode(QuestionOption.self, from: data)
+        #expect(opt.label == "React Native")
+        #expect(opt.description == "Cross-platform mobile framework")
+        #expect(opt.id == "React Native")
+    }
+
+    @Test func questionInfoDecoding() throws {
+        let json = """
+        {"question":"Which framework?","header":"Framework","options":[{"label":"SwiftUI","description":"Native iOS"}],"multiple":true,"custom":false}
+        """
+        let data = json.data(using: .utf8)!
+        let info = try JSONDecoder().decode(QuestionInfo.self, from: data)
+        #expect(info.question == "Which framework?")
+        #expect(info.header == "Framework")
+        #expect(info.options.count == 1)
+        #expect(info.allowMultiple == true)
+        #expect(info.allowCustom == false)
+    }
+
+    @Test func questionInfoDefaultValues() throws {
+        let json = """
+        {"question":"Pick one","header":"Choice","options":[]}
+        """
+        let data = json.data(using: .utf8)!
+        let info = try JSONDecoder().decode(QuestionInfo.self, from: data)
+        #expect(info.allowMultiple == false)
+        #expect(info.allowCustom == true)
+    }
+
+    @Test func questionRequestDecoding() throws {
+        let json = """
+        {"id":"question_abc","sessionID":"s1","questions":[{"question":"Pick one","header":"Q1","options":[{"label":"A","description":"Option A"}]}],"tool":{"messageID":"m1","callID":"c1"}}
+        """
+        let data = json.data(using: .utf8)!
+        let req = try JSONDecoder().decode(QuestionRequest.self, from: data)
+        #expect(req.id == "question_abc")
+        #expect(req.sessionID == "s1")
+        #expect(req.questions.count == 1)
+        #expect(req.tool?.messageID == "m1")
+        #expect(req.tool?.callID == "c1")
+    }
+
+    @Test func questionRequestWithoutTool() throws {
+        let json = """
+        {"id":"question_xyz","sessionID":"s2","questions":[{"question":"Yes or no?","header":"Confirm","options":[{"label":"Yes","description":"Proceed"},{"label":"No","description":"Cancel"}]}]}
+        """
+        let data = json.data(using: .utf8)!
+        let req = try JSONDecoder().decode(QuestionRequest.self, from: data)
+        #expect(req.tool == nil)
+        #expect(req.questions[0].options.count == 2)
+    }
+}
+
+struct QuestionControllerTests {
+
+    @Test func parseAskedEvent() {
+        let props: [String: AnyCodable] = [
+            "id": AnyCodable("question_1"),
+            "sessionID": AnyCodable("s1"),
+            "questions": AnyCodable([
+                [
+                    "question": "Which framework?",
+                    "header": "Framework",
+                    "options": [
+                        ["label": "SwiftUI", "description": "Native iOS"],
+                        ["label": "UIKit", "description": "Classic iOS"],
+                    ],
+                ] as [String: Any],
+            ]),
+        ]
+        let parsed = QuestionController.parseAskedEvent(properties: props)
+        #expect(parsed?.id == "question_1")
+        #expect(parsed?.sessionID == "s1")
+        #expect(parsed?.questions.count == 1)
+        #expect(parsed?.questions.first?.options.count == 2)
+    }
+
+    @Test func parseAskedEventReturnsNilForInvalid() {
+        let props: [String: AnyCodable] = [
+            "sessionID": AnyCodable("s1"),
+        ]
+        let parsed = QuestionController.parseAskedEvent(properties: props)
+        #expect(parsed == nil)
+    }
+
+    @Test func applyResolvedEventRemovesQuestion() {
+        var questions: [QuestionRequest] = []
+        let json = """
+        {"id":"q1","sessionID":"s1","questions":[{"question":"Q","header":"H","options":[]}]}
+        """
+        if let req = try? JSONDecoder().decode(QuestionRequest.self, from: Data(json.utf8)) {
+            questions.append(req)
+        }
+        #expect(questions.count == 1)
+
+        QuestionController.applyResolvedEvent(
+            properties: ["requestID": AnyCodable("q1")],
+            to: &questions
+        )
+        #expect(questions.isEmpty)
+    }
+
+    @Test func applyResolvedEventIgnoresUnknownID() {
+        var questions: [QuestionRequest] = []
+        let json = """
+        {"id":"q1","sessionID":"s1","questions":[{"question":"Q","header":"H","options":[]}]}
+        """
+        if let req = try? JSONDecoder().decode(QuestionRequest.self, from: Data(json.utf8)) {
+            questions.append(req)
+        }
+        QuestionController.applyResolvedEvent(
+            properties: ["requestID": AnyCodable("q_unknown")],
+            to: &questions
+        )
+        #expect(questions.count == 1)
+    }
+}
+
+struct QuestionSSEEventTests {
+
+    @Test func sseEventQuestionAsked() throws {
+        let json = """
+        {"payload":{"type":"question.asked","properties":{"id":"question_1","sessionID":"s1","questions":[{"question":"Pick one","header":"Choice","options":[{"label":"A","description":"Option A"},{"label":"B","description":"Option B"}],"multiple":false}]}}}
+        """
+        let data = json.data(using: .utf8)!
+        let event = try JSONDecoder().decode(SSEEvent.self, from: data)
+        #expect(event.payload.type == "question.asked")
+        let props = event.payload.properties ?? [:]
+        #expect((props["id"]?.value as? String) == "question_1")
+        #expect((props["sessionID"]?.value as? String) == "s1")
+    }
+
+    @Test func sseEventQuestionReplied() throws {
+        let json = """
+        {"payload":{"type":"question.replied","properties":{"sessionID":"s1","requestID":"question_1","answers":[["A"]]}}}
+        """
+        let data = json.data(using: .utf8)!
+        let event = try JSONDecoder().decode(SSEEvent.self, from: data)
+        #expect(event.payload.type == "question.replied")
+        let props = event.payload.properties ?? [:]
+        #expect((props["requestID"]?.value as? String) == "question_1")
+    }
+
+    @Test func sseEventQuestionRejected() throws {
+        let json = """
+        {"payload":{"type":"question.rejected","properties":{"sessionID":"s1","requestID":"question_1"}}}
+        """
+        let data = json.data(using: .utf8)!
+        let event = try JSONDecoder().decode(SSEEvent.self, from: data)
+        #expect(event.payload.type == "question.rejected")
+        let props = event.payload.properties ?? [:]
+        #expect((props["requestID"]?.value as? String) == "question_1")
     }
 }

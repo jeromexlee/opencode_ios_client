@@ -490,7 +490,7 @@ final class AppState {
     static let customProjectSentinel = "__custom__"
 
     var pendingPermissions: [PendingPermission] = []
-    var pendingQuestions: [PendingQuestion] = []
+    var pendingQuestions: [QuestionRequest] = []
 
     var themePreference: String = "auto"  // "auto" | "light" | "dark"
 
@@ -1064,22 +1064,34 @@ final class AppState {
         return fc
     }
 
-    func transcribeAudio(audioFileURL: URL, language: String? = nil) async throws -> String {
+    func transcribeAudio(audioFileURL: URL, language: String? = nil, onPartialTranscript: (@Sendable (String) -> Void)? = nil) async throws -> String {
         let token = aiBuilderToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { throw AIBuildersAudioError.missingToken }
 
         let base = aiBuilderBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let prompt = aiBuilderCustomPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let terms = aiBuilderTerminology.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resp = try await AIBuildersAudioClient.transcribe(
-            baseURL: base,
-            token: token,
-            audioFileURL: audioFileURL,
-            language: language,
-            prompt: prompt.isEmpty ? nil : prompt,
-            terms: terms.isEmpty ? nil : terms
-        )
-        return resp.text
+        let start = ProcessInfo.processInfo.systemUptime
+        let fileName = audioFileURL.lastPathComponent.isEmpty ? "audio.m4a" : audioFileURL.lastPathComponent
+        Self.logger.notice("[SpeechProfile] appState.transcribe begin file=\(fileName, privacy: .public)")
+        do {
+            let resp = try await AIBuildersAudioClient.transcribe(
+                baseURL: base,
+                token: token,
+                audioFileURL: audioFileURL,
+                language: language,
+                prompt: prompt.isEmpty ? nil : prompt,
+                terms: terms.isEmpty ? nil : terms,
+                onPartialTranscript: onPartialTranscript
+            )
+            let elapsedMs = max(0, Int((ProcessInfo.processInfo.systemUptime - start) * 1000))
+            Self.logger.notice("[SpeechProfile] appState.transcribe done ms=\(elapsedMs, privacy: .public) textChars=\(resp.text.count, privacy: .public) requestID=\(resp.requestID, privacy: .public)")
+            return resp.text
+        } catch {
+            let elapsedMs = max(0, Int((ProcessInfo.processInfo.systemUptime - start) * 1000))
+            Self.logger.error("[SpeechProfile] appState.transcribe failed ms=\(elapsedMs, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            throw error
+        }
     }
 
     func testAIBuilderConnection() async {
@@ -1252,26 +1264,6 @@ final class AppState {
         }
     }
 
-    func respondQuestion(_ request: PendingQuestion, answers: [[String]]) async {
-        do {
-            try await apiClient.replyQuestion(requestID: request.questionID, answers: answers)
-            pendingQuestions.removeAll { $0.id == request.id }
-            await refreshPendingQuestions()
-        } catch {
-            connectionError = error.localizedDescription
-        }
-    }
-
-    func rejectQuestion(_ request: PendingQuestion) async {
-        do {
-            try await apiClient.rejectQuestion(requestID: request.questionID)
-            pendingQuestions.removeAll { $0.id == request.id }
-            await refreshPendingQuestions()
-        } catch {
-            connectionError = error.localizedDescription
-        }
-    }
-
     /// SSE permission events are not replayed; poll pending permissions so users can enter
     /// an in-progress session and still see the warning.
     func refreshPendingPermissions() async {
@@ -1286,6 +1278,26 @@ final class AppState {
 
     /// SSE question events are not replayed; poll pending questions so users can enter
     /// an in-progress session and still see pending question cards.
+    func respondQuestion(_ request: QuestionRequest, answers: [[String]]) async {
+        do {
+            try await apiClient.replyQuestion(requestID: request.id, answers: answers)
+            pendingQuestions.removeAll { $0.id == request.id }
+            await refreshPendingQuestions()
+        } catch {
+            connectionError = error.localizedDescription
+        }
+    }
+
+    func rejectQuestion(_ request: QuestionRequest) async {
+        do {
+            try await apiClient.rejectQuestion(requestID: request.id)
+            pendingQuestions.removeAll { $0.id == request.id }
+            await refreshPendingQuestions()
+        } catch {
+            connectionError = error.localizedDescription
+        }
+    }
+
     func refreshPendingQuestions() async {
         guard isConnected else { return }
         do {
@@ -1295,7 +1307,6 @@ final class AppState {
             // Keep the current list on errors.
         }
     }
-
     func connectSSE() {
         sseTask?.cancel()
         sseTask = Task {
@@ -1824,29 +1835,6 @@ struct PendingPermission: Identifiable {
     let patterns: [String]
     let allowAlways: Bool
     let tool: String?
-    let description: String
-}
-
-struct PendingQuestion: Identifiable {
-    var id: String { "\(sessionID)/\(questionID)" }
-    let sessionID: String
-    let questionID: String
-    let questions: [PendingQuestionItem]
-    let tool: String?
-}
-
-struct PendingQuestionItem: Identifiable {
-    let id: String
-    let header: String
-    let question: String
-    let options: [PendingQuestionOption]
-    let multiple: Bool
-    let custom: Bool
-}
-
-struct PendingQuestionOption: Identifiable {
-    let id: String
-    let label: String
     let description: String
 }
 

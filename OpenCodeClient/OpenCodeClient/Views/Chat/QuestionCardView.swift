@@ -6,105 +6,55 @@
 import SwiftUI
 
 struct QuestionCardView: View {
-    let request: PendingQuestion
+    let request: QuestionRequest
     let onReply: ([[String]]) -> Void
     let onReject: () -> Void
 
-    @State private var selectedLabelsByQuestionID: [String: Set<String>] = [:]
-    @State private var customAnswerByQuestionID: [String: String] = [:]
+    @State private var currentTab: Int
+    @State private var answers: [[String]]
+    @State private var customTexts: [String]
+    @State private var customActive: [Bool]
+    @State private var isCustomEditing: Bool = false
+    @State private var isSending: Bool = false
 
-    private let accent = Color.indigo
+    private let accent = Color.blue
     private let cornerRadius: CGFloat = 12
+
+    init(request: QuestionRequest, onReply: @escaping ([[String]]) -> Void, onReject: @escaping () -> Void) {
+        self.request = request
+        self.onReply = onReply
+        self.onReject = onReject
+
+        let count = request.questions.count
+        _currentTab = State(initialValue: 0)
+        _answers = State(initialValue: Array(repeating: [], count: count))
+        _customTexts = State(initialValue: Array(repeating: "", count: count))
+        _customActive = State(initialValue: Array(repeating: false, count: count))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "questionmark.circle.fill")
-                    .foregroundStyle(accent)
-                    .font(.title3)
-                Text(L10n.t(.questionNeedsReply))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(accent)
-            }
+            header
+            progressDots
 
-            ForEach(request.questions) { question in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(question.header)
-                        .font(.callout.weight(.semibold))
+            Text(question.question)
+                .font(.subheadline.weight(.semibold))
 
-                    Text(question.question)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            Text(question.allowMultiple ? L10n.t(.questionMultiHint) : L10n.t(.questionSingleHint))
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-                    if !question.options.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(question.options) { option in
-                                Button {
-                                    toggleOption(option, for: question)
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: isSelected(option, in: question) ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(isSelected(option, in: question) ? accent : .secondary)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(option.label)
-                                                .font(.subheadline.weight(.semibold))
-                                                .foregroundStyle(.primary)
-                                            if !option.description.isEmpty {
-                                                Text(option.description)
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                        }
-                                    }
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 10)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(isSelected(option, in: question) ? accent.opacity(0.12) : Color(.systemGray6))
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(question.options) { option in
+                    optionRow(option)
+                }
 
-                    if question.custom {
-                        TextField(
-                            L10n.t(.questionCustomAnswerPlaceholder),
-                            text: Binding(
-                                get: { customAnswerByQuestionID[question.id] ?? "" },
-                                set: { customAnswerByQuestionID[question.id] = $0 }
-                            ),
-                            axis: .vertical
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(1...3)
-                    }
+                if question.allowCustom {
+                    customInputSection
                 }
             }
 
-            HStack(spacing: 10) {
-                Button {
-                    onReply(composeAnswers())
-                } label: {
-                    Text(L10n.t(.questionSubmit))
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
-
-                Button {
-                    onReject()
-                } label: {
-                    Text(L10n.t(.questionReject))
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(.red)
-            }
+            actionButtons
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,43 +66,275 @@ struct QuestionCardView: View {
         )
     }
 
-    private func isSelected(_ option: PendingQuestionOption, in question: PendingQuestionItem) -> Bool {
-        selectedLabelsByQuestionID[question.id, default: []].contains(option.label)
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "questionmark.bubble.fill")
+                .foregroundStyle(accent)
+                .font(.title3)
+
+            Text(L10n.t(.questionTitle))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(accent)
+
+            Spacer(minLength: 8)
+
+            Text(L10n.t(.questionOf, Int32(currentTab + 1), Int32(request.questions.count)))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
     }
 
-    private func toggleOption(_ option: PendingQuestionOption, for question: PendingQuestionItem) {
-        var current = selectedLabelsByQuestionID[question.id, default: []]
-        if question.multiple {
-            if current.contains(option.label) {
-                current.remove(option.label)
+    private var progressDots: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<request.questions.count, id: \.self) { index in
+                Circle()
+                    .fill(dotColor(for: index))
+                    .frame(width: 8, height: 8)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        goToTab(index)
+                    }
+            }
+        }
+    }
+
+    private var customInputSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: isCustomActive ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(isCustomActive ? accent : .secondary)
+
+                Text(L10n.t(.questionTypeOwnAnswer))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(isCustomActive ? accent : .primary)
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isCustomActive ? Color.blue.opacity(0.08) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                activateCustom()
+            }
+
+            if isCustomActive {
+                TextField(L10n.t(.questionCustomPlaceholder), text: $customTexts[currentTab])
+                    .textFieldStyle(.roundedBorder)
+                    .submitLabel(.done)
+                    .onTapGesture {
+                        isCustomEditing = true
+                    }
+                    .onSubmit {
+                        commitCustom()
+                    }
+            }
+        }
+    }
+
+    private var actionButtons: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Button {
+                    onReject()
+                } label: {
+                    Text(L10n.t(.questionDismiss))
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+
+                if currentTab > 0 {
+                    Button {
+                        back()
+                    } label: {
+                        Text(L10n.t(.questionBack))
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.blue)
+                }
+
+                Button {
+                    next()
+                } label: {
+                    Text(currentTab >= request.questions.count - 1 ? L10n.t(.questionSubmit) : L10n.t(.questionNext))
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(!canProceed || isSending)
+            }
+        }
+    }
+
+    private var question: QuestionInfo {
+        guard request.questions.indices.contains(currentTab) else {
+            return QuestionInfo(question: "", header: "", options: [], multiple: false, custom: false)
+        }
+        return request.questions[currentTab]
+    }
+
+    private var isCustomActive: Bool {
+        customActive.indices.contains(currentTab) ? customActive[currentTab] : false
+    }
+
+    private var canProceed: Bool {
+        if hasAnswer(at: currentTab) {
+            return true
+        }
+        return isCustomActive && !trimmedCustomText(at: currentTab).isEmpty
+    }
+
+    private func isSelected(_ option: QuestionOption) -> Bool {
+        answers.indices.contains(currentTab) && answers[currentTab].contains(option.label)
+    }
+
+    @ViewBuilder
+    private func optionRow(_ option: QuestionOption) -> some View {
+        let selected = isSelected(option)
+        let multiple = question.allowMultiple
+
+        HStack(spacing: 10) {
+            Image(systemName: selected ? (multiple ? "checkmark.square.fill" : "largecircle.fill.circle") : (multiple ? "square" : "circle"))
+                .foregroundStyle(selected ? .blue : .secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(option.label)
+                    .font(.subheadline.weight(.medium))
+                Text(option.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(selected ? Color.blue.opacity(0.08) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectOption(option)
+        }
+    }
+
+    private func selectOption(_ option: QuestionOption) {
+        if question.allowMultiple {
+            toggleMulti(option.label)
+        } else {
+            selectSingle(option.label)
+        }
+    }
+
+    private func selectSingle(_ label: String) {
+        guard answers.indices.contains(currentTab), customActive.indices.contains(currentTab) else { return }
+        answers[currentTab] = [label]
+        customActive[currentTab] = false
+        isCustomEditing = false
+    }
+
+    private func toggleMulti(_ label: String) {
+        guard answers.indices.contains(currentTab) else { return }
+
+        if answers[currentTab].contains(label) {
+            answers[currentTab].removeAll { $0 == label }
+        } else {
+            answers[currentTab].append(label)
+        }
+    }
+
+    private func activateCustom() {
+        guard customActive.indices.contains(currentTab), customTexts.indices.contains(currentTab) else { return }
+
+        customActive[currentTab] = true
+        isCustomEditing = true
+
+        if !question.allowMultiple {
+            answers[currentTab] = []
+        }
+    }
+
+    private func commitCustom() {
+        guard customTexts.indices.contains(currentTab), answers.indices.contains(currentTab) else { return }
+
+        let text = trimmedCustomText(at: currentTab)
+        isCustomEditing = false
+
+        if question.allowMultiple {
+            let optionLabels = Set(question.options.map(\.label))
+            answers[currentTab].removeAll { !optionLabels.contains($0) }
+            customTexts[currentTab] = text
+            if !text.isEmpty {
+                if !answers[currentTab].contains(text) {
+                    answers[currentTab].append(text)
+                }
+                customActive[currentTab] = true
             } else {
-                current.insert(option.label)
+                customActive[currentTab] = false
             }
         } else {
-            if current.contains(option.label) {
-                current.removeAll()
-            } else {
-                current = [option.label]
-            }
+            customTexts[currentTab] = text
+            customActive[currentTab] = !text.isEmpty
+            answers[currentTab] = text.isEmpty ? [] : [text]
         }
-        selectedLabelsByQuestionID[question.id] = current
     }
 
-    private func composeAnswers() -> [[String]] {
-        request.questions.map { question in
-            var answer: [String] = question.options.compactMap { option in
-                selectedLabelsByQuestionID[question.id, default: []].contains(option.label) ? option.label : nil
-            }
-
-            if question.custom {
-                let custom = (customAnswerByQuestionID[question.id] ?? "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !custom.isEmpty {
-                    answer.append(custom)
-                }
-            }
-
-            return answer
+    private func next() {
+        commitCustomIfNeeded()
+        if currentTab >= request.questions.count - 1 {
+            submit()
+        } else {
+            currentTab += 1
+            isCustomEditing = false
         }
+    }
+
+    private func back() {
+        commitCustomIfNeeded()
+        guard currentTab > 0 else { return }
+        currentTab -= 1
+        isCustomEditing = false
+    }
+
+    private func submit() {
+        guard !isSending else { return }
+        isSending = true
+        onReply(answers)
+    }
+
+    private func goToTab(_ index: Int) {
+        guard request.questions.indices.contains(index) else { return }
+        commitCustomIfNeeded()
+        currentTab = index
+        isCustomEditing = false
+    }
+
+    private func commitCustomIfNeeded() {
+        guard isCustomActive || isCustomEditing else { return }
+        commitCustom()
+    }
+
+    private func hasAnswer(at index: Int) -> Bool {
+        guard answers.indices.contains(index) else { return false }
+        if !answers[index].isEmpty {
+            return true
+        }
+        guard customActive.indices.contains(index), customTexts.indices.contains(index) else { return false }
+        return customActive[index] && !trimmedCustomText(at: index).isEmpty
+    }
+
+    private func trimmedCustomText(at index: Int) -> String {
+        guard customTexts.indices.contains(index) else { return "" }
+        return customTexts[index].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func dotColor(for index: Int) -> Color {
+        if index == currentTab {
+            return .blue
+        }
+        return hasAnswer(at: index) ? .blue.opacity(0.5) : .gray.opacity(0.3)
     }
 }

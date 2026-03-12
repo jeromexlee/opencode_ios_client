@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import os
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -28,6 +29,18 @@ private enum MessageGroupItem: Identifiable {
 }
 
 struct ChatTabView: View {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "OpenCodeClient",
+        category: "SpeechProfile"
+    )
+
+    static func mergedSpeechInput(prefix: String, transcript: String) -> String {
+        let cleanedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedTranscript.isEmpty else { return prefix }
+        guard !prefix.isEmpty else { return cleanedTranscript }
+        return prefix + " " + cleanedTranscript
+    }
+
     @Bindable var state: AppState
     var showSettingsInToolbar: Bool = false
     var onSettingsTap: (() -> Void)?
@@ -41,6 +54,7 @@ struct ChatTabView: View {
     @State private var isRecording = false
     @State private var isTranscribing = false
     @State private var speechError: String?
+    @State private var pendingScrollTask: Task<Void, Never>?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var useGridCards: Bool { sizeClass == .regular }
@@ -84,7 +98,7 @@ struct ChatTabView: View {
         state.pendingPermissions.filter { $0.sessionID == state.currentSessionID }
     }
 
-    private var currentQuestions: [PendingQuestion] {
+    private var currentQuestions: [QuestionRequest] {
         state.pendingQuestions.filter { $0.sessionID == state.currentSessionID }
     }
 
@@ -268,7 +282,7 @@ struct ChatTabView: View {
 
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 12) {
                             if showLoadMoreHint {
                                 HStack(spacing: 8) {
                                     if state.isLoadingOlderMessagesInCurrentSession {
@@ -332,17 +346,6 @@ struct ChatTabView: View {
                                     alignment: .leading,
                                     spacing: 10
                                 ) {
-                                    ForEach(currentQuestions) { request in
-                                        QuestionCardView(
-                                            request: request,
-                                            onReply: { answers in
-                                                Task { await state.respondQuestion(request, answers: answers) }
-                                            },
-                                            onReject: {
-                                                Task { await state.rejectQuestion(request) }
-                                            }
-                                        )
-                                    }
                                     ForEach(currentPermissions) { perm in
                                         PermissionCardView(permission: perm) { response in
                                             Task { await state.respondPermission(perm, response: response) }
@@ -350,22 +353,23 @@ struct ChatTabView: View {
                                     }
                                 }
                             } else {
-                                ForEach(currentQuestions) { request in
-                                    QuestionCardView(
-                                        request: request,
-                                        onReply: { answers in
-                                            Task { await state.respondQuestion(request, answers: answers) }
-                                        },
-                                        onReject: {
-                                            Task { await state.rejectQuestion(request) }
-                                        }
-                                    )
-                                }
                                 ForEach(currentPermissions) { perm in
                                     PermissionCardView(permission: perm) { response in
                                         Task { await state.respondPermission(perm, response: response) }
                                     }
                                 }
+                            }
+
+                            ForEach(currentQuestions) { question in
+                                QuestionCardView(
+                                    request: question,
+                                    onReply: { answers in
+                                        Task { await state.respondQuestion(question, answers: answers) }
+                                    },
+                                    onReject: {
+                                        Task { await state.rejectQuestion(question) }
+                                    }
+                                )
                             }
 
                             // Running activity should be at the very bottom.
@@ -384,13 +388,11 @@ struct ChatTabView: View {
                     }
                     .scrollDismissesKeyboard(.immediately)
                     .onChange(of: scrollAnchor) { _, _ in
-                        if state.isBusy {
-                            proxy.scrollTo("bottom", anchor: .bottom)
-                        } else {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo("bottom", anchor: .bottom)
-                            }
-                        }
+                        scheduleScrollToBottom(using: proxy)
+                    }
+                    .onDisappear {
+                        pendingScrollTask?.cancel()
+                        pendingScrollTask = nil
                     }
                 }
 
@@ -521,6 +523,24 @@ struct ChatTabView: View {
         isSyncingDraft = false
     }
 
+    private func scheduleScrollToBottom(using proxy: ScrollViewProxy) {
+        pendingScrollTask?.cancel()
+        let shouldAnimate = !state.isBusy
+
+        pendingScrollTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+
+            if shouldAnimate {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+            } else {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+        }
+    }
+
     private func sendCurrentInput() {
         guard !isSending else { return }
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -539,24 +559,32 @@ struct ChatTabView: View {
 
     private func toggleRecording() async {
         if isRecording {
+            let stopStart = ProcessInfo.processInfo.systemUptime
             guard let url = recorder.stop() else {
                 isRecording = false
+                Self.logger.error("[SpeechProfile] recorder stop failed: missing file URL")
                 return
             }
             isRecording = false
+            let fileBytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+            Self.logger.notice("[SpeechProfile] recorder stopped ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - stopStart) * 1000)), privacy: .public) file=\(url.lastPathComponent, privacy: .public) bytes=\(fileBytes, privacy: .public)")
+
             isTranscribing = true
             defer { isTranscribing = false }
+            let prefix = inputText
+            let transcribeStart = ProcessInfo.processInfo.systemUptime
             do {
-                let transcript = try await state.transcribeAudio(audioFileURL: url)
-                let cleaned = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !cleaned.isEmpty {
-                    if inputText.isEmpty {
-                        inputText = cleaned
-                    } else {
-                        inputText += " " + cleaned
+                let transcript = try await state.transcribeAudio(audioFileURL: url) { partial in
+                    Task { @MainActor in
+                        inputText = Self.mergedSpeechInput(prefix: prefix, transcript: partial)
                     }
                 }
+                let cleaned = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                Self.logger.notice("[SpeechProfile] chat transcribe done ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - transcribeStart) * 1000)), privacy: .public) chars=\(cleaned.count, privacy: .public)")
+                inputText = Self.mergedSpeechInput(prefix: prefix, transcript: cleaned)
             } catch {
+                Self.logger.error("[SpeechProfile] chat transcribe failed ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - transcribeStart) * 1000)), privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                inputText = prefix
                 speechError = error.localizedDescription
             }
         } else {
@@ -574,15 +602,20 @@ struct ChatTabView: View {
                 return
             }
 
+            let permissionStart = ProcessInfo.processInfo.systemUptime
             let allowed = await recorder.requestPermission()
+            Self.logger.notice("[SpeechProfile] microphone permission allowed=\(allowed, privacy: .public) ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - permissionStart) * 1000)), privacy: .public)")
             guard allowed else {
                 speechError = L10n.t(.chatMicrophoneDenied)
                 return
             }
+            let startRecordingStart = ProcessInfo.processInfo.systemUptime
             do {
                 try recorder.start()
                 isRecording = true
+                Self.logger.notice("[SpeechProfile] recorder started ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - startRecordingStart) * 1000)), privacy: .public)")
             } catch {
+                Self.logger.error("[SpeechProfile] recorder start failed error=\(error.localizedDescription, privacy: .public)")
                 speechError = error.localizedDescription
             }
         }
@@ -591,7 +624,7 @@ struct ChatTabView: View {
     /// 内容变化时用于触发自动滚动
     private var scrollAnchor: String {
         let perm = state.pendingPermissions.filter { $0.sessionID == state.currentSessionID }.count
-        let question = state.pendingQuestions.filter { $0.sessionID == state.currentSessionID }.count
+        let questionCount = state.pendingQuestions.filter { $0.sessionID == state.currentSessionID }.count
         let messageCount = state.messages.count
         let lastMessage = state.messages.last
         let lastMessageSignature = {
@@ -609,7 +642,7 @@ struct ChatTabView: View {
             let state = ($0.state == .running) ? "running" : "completed"
             return "\($0.id)-\($0.text)-\(state)"
         } ?? ""
-        return "\(perm)-\(question)-\(messageCount)-\(lastMessageSignature)-\(streamKeyCount)-\(streamCharCount)-\(streamingReasoningID)-\(sid)-\(status)-\(activity)"
+        return "\(perm)-\(questionCount)-\(messageCount)-\(lastMessageSignature)-\(streamKeyCount)-\(streamCharCount)-\(streamingReasoningID)-\(sid)-\(status)-\(activity)"
     }
 
     @ViewBuilder

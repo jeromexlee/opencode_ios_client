@@ -277,31 +277,6 @@ actor APIClient {
         case reject
     }
 
-    struct QuestionOption: Codable {
-        let label: String
-        let description: String
-    }
-
-    struct QuestionInfo: Codable {
-        let question: String
-        let header: String
-        let options: [QuestionOption]
-        let multiple: Bool?
-        let custom: Bool?
-    }
-
-    struct QuestionRequest: Codable, Identifiable {
-        struct ToolRef: Codable {
-            let messageID: String?
-            let callID: String?
-        }
-
-        let id: String
-        let sessionID: String
-        let questions: [QuestionInfo]
-        let tool: ToolRef?
-    }
-
     struct PermissionRequest: Codable, Identifiable {
         struct ToolRef: Codable {
             let messageID: String?
@@ -351,24 +326,16 @@ actor APIClient {
         struct Body: Encodable {
             let answers: [[String]]
         }
-
         let data = try JSONEncoder().encode(Body(answers: answers))
-        let (_, httpResponse) = try await makeRequest(
-            path: "/question/\(requestID)/reply",
-            method: "POST",
-            body: data
-        )
-        if let http = httpResponse as? HTTPURLResponse, http.statusCode != 200 {
+        let (_, response) = try await makeRequest(path: "/question/\(requestID)/reply", method: "POST", body: data)
+        if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             throw APIError.httpError(statusCode: http.statusCode, data: Data())
         }
     }
 
     func rejectQuestion(requestID: String) async throws {
-        let (_, httpResponse) = try await makeRequest(
-            path: "/question/\(requestID)/reject",
-            method: "POST"
-        )
-        if let http = httpResponse as? HTTPURLResponse, http.statusCode != 200 {
+        let (_, response) = try await makeRequest(path: "/question/\(requestID)/reject", method: "POST")
+        if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             throw APIError.httpError(statusCode: http.statusCode, data: Data())
         }
     }

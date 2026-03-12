@@ -112,11 +112,16 @@ enum L10n {
         case permissionAllowOnce
         case permissionAllowAlways
         case permissionReject
-
-        case questionNeedsReply
+        case questionTitle
+        case questionSingleHint
+        case questionMultiHint
+        case questionTypeOwnAnswer
+        case questionCustomPlaceholder
+        case questionDismiss
         case questionSubmit
-        case questionReject
-        case questionCustomAnswerPlaceholder
+        case questionBack
+        case questionNext
+        case questionOf
 
         case toolReason
         case toolCommandInput
@@ -311,10 +316,16 @@ enum L10n {
         Key.permissionAllowOnce.rawValue: "Allow Once",
         Key.permissionAllowAlways.rawValue: "Allow Always",
         Key.permissionReject.rawValue: "Reject",
-        Key.questionNeedsReply.rawValue: "Your Input Needed",
+        Key.questionTitle.rawValue: "Question",
+        Key.questionSingleHint.rawValue: "Select one option",
+        Key.questionMultiHint.rawValue: "Select one or more options",
+        Key.questionTypeOwnAnswer.rawValue: "Type your own answer",
+        Key.questionCustomPlaceholder.rawValue: "Type your answer...",
+        Key.questionDismiss.rawValue: "Dismiss",
         Key.questionSubmit.rawValue: "Submit",
-        Key.questionReject.rawValue: "Reject",
-        Key.questionCustomAnswerPlaceholder.rawValue: "Custom answer",
+        Key.questionBack.rawValue: "Back",
+        Key.questionNext.rawValue: "Next",
+        Key.questionOf.rawValue: "%d of %d",
 
         Key.toolReason.rawValue: "Reason",
         Key.toolCommandInput.rawValue: "Command / Input",
@@ -512,10 +523,16 @@ enum L10n {
         Key.permissionAllowOnce.rawValue: "允许一次",
         Key.permissionAllowAlways.rawValue: "始终允许",
         Key.permissionReject.rawValue: "拒绝",
-        Key.questionNeedsReply.rawValue: "需要你的输入",
+        Key.questionTitle.rawValue: "提问",
+        Key.questionSingleHint.rawValue: "选择一个选项",
+        Key.questionMultiHint.rawValue: "选择一个或多个选项",
+        Key.questionTypeOwnAnswer.rawValue: "输入自定义答案",
+        Key.questionCustomPlaceholder.rawValue: "输入你的答案...",
+        Key.questionDismiss.rawValue: "跳过",
         Key.questionSubmit.rawValue: "提交",
-        Key.questionReject.rawValue: "拒绝",
-        Key.questionCustomAnswerPlaceholder.rawValue: "自定义答案",
+        Key.questionBack.rawValue: "上一步",
+        Key.questionNext.rawValue: "下一步",
+        Key.questionOf.rawValue: "第 %d 题，共 %d 题",
 
         Key.toolReason.rawValue: "原因",
         Key.toolCommandInput.rawValue: "命令 / 输入",
