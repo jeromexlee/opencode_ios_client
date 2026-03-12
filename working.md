@@ -7,6 +7,15 @@
 - 重写 README.md，面向开源用户，添加 TestFlight 安装入口。
 - 聊天自动滚动逻辑优化：仅当用户在底部时跟随新内容；向上滚动时暂停跟随。
 - 更新 PRD 和 RFC，与当前应用功能对齐：问题卡片、图像预览、模型列表、安装方式、聊天行为。
+- 为 AppState 补了一轮更扎实的测试，先把会话加载、创建、删除、发消息失败回滚等关键流程兜住。
+- 给 APIClient 和 SSEClient 加了注入入口，后续拆 AppState 和网络层时可以直接用 mock 做回归验证。
+- 完成了 SSH 隧道这一轮的最小安全修复，收掉递归闭包/并发捕获这类 P0 风险点。
+- 同步刷新了代码审查文档，标记这轮已经完成的测试加固和 SSH 修复进展。
+- 新增一组 SSE 行为测试，直接覆盖 `session.updated`、`message.updated`、`message.part.updated`、`session.status` 这些关键事件对状态的影响。
+- 开始真正拆 `AppState`：先把消息流式状态继续往 `MessageStore` 下沉一小步，降低后续 store split 的风险。
+- 重新跑通 iOS 客户端完整测试，确认这轮 SSE 测试和小范围下沉没有引入回归。
+- 继续补了两条 SSE 契约测试，把当前 session 的 `message.updated` reload 行为和非当前 session 的 `message.part.updated` 忽略逻辑都锁住。
+- `message.part.updated` 这条链路继续下沉：现在由 `MessageStore` 自己解析并决定 append、finalize 还是 ignore，`AppState` 只保留刷新和 reload 的编排。
 
 ## 2026-03-11
 
