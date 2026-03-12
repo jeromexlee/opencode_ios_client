@@ -47,6 +47,7 @@ struct ChatTabView: View {
     @State private var isRecording = false
     @State private var isTranscribing = false
     @State private var speechError: String?
+    @State private var pendingScrollTask: Task<Void, Never>?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var useGridCards: Bool { sizeClass == .regular }
@@ -274,7 +275,7 @@ struct ChatTabView: View {
 
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 12) {
                             if showLoadMoreHint {
                                 HStack(spacing: 8) {
                                     if state.isLoadingOlderMessagesInCurrentSession {
@@ -390,13 +391,11 @@ struct ChatTabView: View {
                     }
                     .scrollDismissesKeyboard(.immediately)
                     .onChange(of: scrollAnchor) { _, _ in
-                        if state.isBusy {
-                            proxy.scrollTo("bottom", anchor: .bottom)
-                        } else {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo("bottom", anchor: .bottom)
-                            }
-                        }
+                        scheduleScrollToBottom(using: proxy)
+                    }
+                    .onDisappear {
+                        pendingScrollTask?.cancel()
+                        pendingScrollTask = nil
                     }
                 }
 
@@ -525,6 +524,24 @@ struct ChatTabView: View {
         isSyncingDraft = true
         inputText = state.draftText(for: sessionID)
         isSyncingDraft = false
+    }
+
+    private func scheduleScrollToBottom(using proxy: ScrollViewProxy) {
+        pendingScrollTask?.cancel()
+        let shouldAnimate = !state.isBusy
+
+        pendingScrollTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+
+            if shouldAnimate {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+            } else {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+        }
     }
 
     private func sendCurrentInput() {

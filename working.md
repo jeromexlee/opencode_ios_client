@@ -2,6 +2,21 @@
 
 ## Recent Changes
 
+### Streaming Auto-Scroll Overshoot Fix (2026-03-11)
+
+Fixed a chat auto-scroll bug where the view could scroll past the real bottom into blank space while an agent was streaming thinking text or tool output. Static inspection plus SwiftUI references pointed to a fragile combination: `ScrollViewReader.scrollTo("bottom")` was firing on every streaming update while the chat content lived inside a `LazyVStack`, so SwiftUI could scroll against an unstable content height and land below the rendered content.
+
+**What changed:**
+
+- `Views/Chat/ChatTabView.swift` — Replaced the chat transcript container from `LazyVStack` to `VStack` so row heights are laid out eagerly during streaming updates
+- `Views/Chat/ChatTabView.swift` — Replaced immediate `proxy.scrollTo("bottom")` calls with a cancellable debounced scroll task (`50ms`) to avoid stacking multiple bottom-scroll requests while the layout is still settling
+- `Views/Chat/ChatTabView.swift` — Cancel the pending scroll task when the chat view disappears to avoid stale scroll work after navigation
+
+**Validation:**
+
+- `xcodebuild -scheme "OpenCodeClient" -project "OpenCodeClient.xcodeproj" -destination 'generic/platform=iOS Simulator' build`
+- `xcodebuild test -scheme "OpenCodeClient" -project "OpenCodeClient.xcodeproj" -destination 'platform=iOS Simulator,id=302F88CA-C2D3-4DC0-8E12-B3ED82D5A3C8' -only-testing:OpenCodeClientTests`
+
 ### Question Feature (2026-03-07)
 
 Implemented the Question feature so the iOS client can handle AI-initiated questions from the OpenCode server. Previously, when the server's AI asked questions via the MCP `question` tool, the iOS client had no handler and the session would stall. Now the client displays question cards with selectable options and custom text input, sends replies back to the server, and the session continues.
