@@ -39,6 +39,28 @@
 - `xcodebuild -scheme "OpenCodeClient" -project "OpenCodeClient/OpenCodeClient.xcodeproj" -destination 'generic/platform=iOS Simulator' build`
 - `xcodebuild test -scheme "OpenCodeClient" -project "OpenCodeClient/OpenCodeClient.xcodeproj" -destination 'platform=iOS Simulator,id=302F88CA-C2D3-4DC0-8E12-B3ED82D5A3C8' -only-testing:OpenCodeClientTests`
 
+**Follow-up polish:**
+
+首版实现跑通后，实际手测又发现三个体验问题。
+
+第一，`ImageView` 初始状态仍然等价于原始像素 100%，不是用户预期的 fit-to-screen。第二，右上角 reset/fullscreen 风格按钮语义不清，而且点击后对当前交互模型帮助不大。第三，share sheet 里只有 `Save to Files`，没有 `Save to Photos`，导致 PNG 等图像文件不能直接进入系统相册。
+
+这轮跟进做了两类修正。
+
+1. 重写 `ImageView` 的缩放基线：`scale == 1.0` 现在表示 fit-to-screen，而不是 native size。新增双击切换行为：在 fit 状态下双击放大到 native scale（小图至少 2x），放大后双击回到 fit；pinch 和 drag 行为保留；移除了内部 reset toolbar 按钮。
+
+2. 在 `Info.plist` 增加 `NSPhotoLibraryAddUsageDescription`。这是 iOS 显示 `Save to Photos` action 的前提，没有这个 privacy key，share sheet 会直接隐藏保存到相册入口。
+
+**Follow-up 改动文件：**
+
+- `OpenCodeClient/OpenCodeClient/Views/FileContentView.swift` — 重写 `ImageView` 的 fit/zoom/double-tap 交互模型，移除内部 reset 按钮
+- `OpenCodeClient/Info.plist` — 新增 `NSPhotoLibraryAddUsageDescription`，恢复 `Save to Photos`
+
+**Follow-up 验证：**
+
+- `xcodebuild -scheme "OpenCodeClient" -project "OpenCodeClient.xcodeproj" -destination 'generic/platform=iOS Simulator' build`
+- `xcodebuild test -scheme "OpenCodeClient" -project "OpenCodeClient.xcodeproj" -destination 'platform=iOS Simulator,id=302F88CA-C2D3-4DC0-8E12-B3ED82D5A3C8' -only-testing:OpenCodeClientTests`
+
 
 ### 语音转写句首空格修复（2026-03-11）
 
