@@ -8,6 +8,7 @@ import SwiftUI
 struct SettingsTabView: View {
     @Bindable var state: AppState
     @FocusState private var isServerAddressFocused: Bool
+    @State private var isAddressHistoryExpanded = false
 
     @State private var showPublicKeySheet = false
     @State private var showRotateKeyAlert = false
@@ -23,15 +24,73 @@ struct SettingsTabView: View {
                 Section(L10n.t(.settingsServerConnection)) {
                     let info = AppState.serverURLInfo(state.serverURL)
 
-                    TextField(L10n.t(.settingsAddress), text: $state.serverURL)
-                        .focused($isServerAddressFocused)
-                        .submitLabel(.done)
-                        .onAppear { normalizeServerURLInPlace(state: state) }
-                        .textContentType(.URL)
-                        .autocapitalization(.none)
-                        .onChange(of: isServerAddressFocused) { _, newValue in
-                            if !newValue { normalizeServerURLInPlace(state: state) }
+                    HStack(spacing: 8) {
+                        TextField(L10n.t(.settingsAddress), text: $state.serverURL)
+                            .focused($isServerAddressFocused)
+                            .submitLabel(.done)
+                            .onAppear { normalizeServerURLInPlace(state: state) }
+                            .textContentType(.URL)
+                            .autocapitalization(.none)
+                            .onChange(of: isServerAddressFocused) { _, newValue in
+                                if !newValue { normalizeServerURLInPlace(state: state) }
+                            }
+
+                        if !state.serverURLHistory.isEmpty {
+                            Button {
+                                withAnimation(.easeInOut(duration: LayoutConstants.Animation.shortDuration)) {
+                                    isAddressHistoryExpanded.toggle()
+                                }
+                            } label: {
+                                Image(systemName: isAddressHistoryExpanded ? "chevron.up.circle.fill" : "chevron.down.circle")
+                                    .font(.title3)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(L10n.t(.settingsAddressHistory))
                         }
+                    }
+
+                    if isAddressHistoryExpanded, !state.serverURLHistory.isEmpty {
+                        ForEach(state.serverURLHistory, id: \.self) { address in
+                            HStack(alignment: .top, spacing: 12) {
+                                Button {
+                                    state.serverURL = address
+                                    isServerAddressFocused = false
+                                    isAddressHistoryExpanded = false
+                                } label: {
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Text(address)
+                                            .font(.caption.monospaced())
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        Spacer(minLength: 0)
+                                        if address == normalizedServerAddress {
+                                            Image(systemName: "checkmark")
+                                                .foregroundStyle(.green)
+                                        }
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .buttonStyle(.plain)
+
+                                Button(role: .destructive) {
+                                    removeAddressFromHistory(address)
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(L10n.t(.sessionsDelete))
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    removeAddressFromHistory(address)
+                                } label: {
+                                    Label(L10n.t(.sessionsDelete), systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
 
                     TextField(L10n.t(.settingsUsername), text: $state.username)
                         .textContentType(.username)
@@ -410,6 +469,17 @@ struct SettingsTabView: View {
 
     private func schemeHelpText(info: AppState.ServerURLInfo) -> String {
         L10n.helpForURLScheme(isLocal: info.isLocal, isTailscale: info.isTailscale)
+    }
+
+    private var normalizedServerAddress: String? {
+        AppState.normalizedServerAddress(state.serverURL)
+    }
+
+    private func removeAddressFromHistory(_ address: String) {
+        state.removeServerAddressFromHistory(address)
+        if state.serverURLHistory.isEmpty {
+            isAddressHistoryExpanded = false
+        }
     }
 
     /// Normalizes server URL in place: fix malformed host://host:port, then ensure http:// prefix.

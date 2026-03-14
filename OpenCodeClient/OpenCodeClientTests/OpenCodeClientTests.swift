@@ -50,6 +50,73 @@ struct OpenCodeClientTests {
         #expect(state.serverURL == "127.0.0.1:4096")
     }
 
+    @Test func normalizedServerAddress() {
+        #expect(AppState.normalizedServerAddress("127.0.0.1:4096") == "http://127.0.0.1:4096")
+        #expect(AppState.normalizedServerAddress("HTTP://LOCALHOST:4096") == "http://localhost:4096")
+        #expect(AppState.normalizedServerAddress("https://Example.COM/api") == "https://example.com/api")
+        #expect(AppState.normalizedServerAddress("http://example.com:4096") == nil)
+    }
+
+    @Test @MainActor func rememberSuccessfulServerAddressPersistsAndDeduplicates() {
+        let serverKey = "serverURL"
+        let historyKey = "serverURLHistory"
+        let previousServer = UserDefaults.standard.string(forKey: serverKey)
+        let previousHistory = UserDefaults.standard.array(forKey: historyKey)
+        defer {
+            if let previousServer {
+                UserDefaults.standard.set(previousServer, forKey: serverKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: serverKey)
+            }
+            if let previousHistory {
+                UserDefaults.standard.set(previousHistory, forKey: historyKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: historyKey)
+            }
+        }
+
+        UserDefaults.standard.removeObject(forKey: serverKey)
+        UserDefaults.standard.removeObject(forKey: historyKey)
+
+        let state = AppState()
+        state.serverURL = "http://127.0.0.1:4096"
+        state.rememberSuccessfulServerAddress()
+        state.rememberSuccessfulServerAddress("HTTP://LOCALHOST:4096")
+        state.rememberSuccessfulServerAddress("https://example.com")
+        state.rememberSuccessfulServerAddress("http://127.0.0.1:4096")
+
+        #expect(state.serverURL == "http://127.0.0.1:4096")
+        #expect(state.serverURLHistory == [
+            "http://127.0.0.1:4096",
+            "https://example.com",
+            "http://localhost:4096"
+        ])
+        #expect((UserDefaults.standard.array(forKey: historyKey) as? [String]) == state.serverURLHistory)
+    }
+
+    @Test @MainActor func removeServerAddressFromHistoryPersists() {
+        let historyKey = "serverURLHistory"
+        let previousHistory = UserDefaults.standard.array(forKey: historyKey)
+        defer {
+            if let previousHistory {
+                UserDefaults.standard.set(previousHistory, forKey: historyKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: historyKey)
+            }
+        }
+
+        UserDefaults.standard.set([
+            "http://127.0.0.1:4096",
+            "https://example.com"
+        ], forKey: historyKey)
+
+        let state = AppState()
+        state.removeServerAddressFromHistory("HTTPS://EXAMPLE.COM")
+
+        #expect(state.serverURLHistory == ["http://127.0.0.1:4096"])
+        #expect((UserDefaults.standard.array(forKey: historyKey) as? [String]) == ["http://127.0.0.1:4096"])
+    }
+
     @Test func sessionDecoding() throws {
         let json = """
         {"id":"s1","slug":"s1","projectID":"p1","directory":"/tmp","parentID":null,"title":"Test","version":"1","time":{"created":0,"updated":0},"share":null,"summary":null}

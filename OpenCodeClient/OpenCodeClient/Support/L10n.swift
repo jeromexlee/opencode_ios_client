@@ -26,6 +26,7 @@ enum L10n {
         case settingsTitle
         case settingsServerConnection
         case settingsAddress
+        case settingsAddressHistory
         case settingsUsername
         case settingsPassword
         case settingsScheme
@@ -231,6 +232,7 @@ enum L10n {
         Key.settingsTitle.rawValue: "Settings",
         Key.settingsServerConnection.rawValue: "Server Connection",
         Key.settingsAddress.rawValue: "Address",
+        Key.settingsAddressHistory.rawValue: "Saved Addresses",
         Key.settingsUsername.rawValue: "Username",
         Key.settingsPassword.rawValue: "Password",
         Key.settingsScheme.rawValue: "Scheme",
@@ -435,6 +437,7 @@ enum L10n {
         Key.settingsTitle.rawValue: "设置",
         Key.settingsServerConnection.rawValue: "服务器连接",
         Key.settingsAddress.rawValue: "地址",
+        Key.settingsAddressHistory.rawValue: "已保存地址",
         Key.settingsUsername.rawValue: "用户名",
         Key.settingsPassword.rawValue: "密码",
         Key.settingsScheme.rawValue: "协议",

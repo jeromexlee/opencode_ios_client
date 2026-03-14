@@ -34,12 +34,17 @@ final class AppState {
         let warning: String?
     }
 
+    private nonisolated static func hasExplicitHTTPScheme(_ raw: String) -> Bool {
+        let lowered = raw.lowercased()
+        return lowered.hasPrefix("http://") || lowered.hasPrefix("https://")
+    }
+
     /// Ensures server URL has http:// or https:// prefix. Returns normalized string if missing scheme, nil otherwise.
     /// Call after correctMalformedServerURL. Ensures the stored/displayed value is explicit and avoids URL parsing quirks.
     nonisolated static func ensureServerURLHasScheme(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        guard !trimmed.hasPrefix("http://"), !trimmed.hasPrefix("https://") else { return nil }
+        guard !hasExplicitHTTPScheme(trimmed) else { return nil }
         return "http://\(trimmed)"
     }
 
@@ -50,7 +55,8 @@ final class AppState {
         guard let idx = trimmed.range(of: "://") else { return nil }
         let beforeScheme = String(trimmed[..<idx.lowerBound])
         let afterScheme = String(trimmed[idx.upperBound...])
-        guard afterScheme.hasPrefix(beforeScheme), beforeScheme != "http", beforeScheme != "https" else { return nil }
+        let lowered = beforeScheme.lowercased()
+        guard afterScheme.hasPrefix(beforeScheme), lowered != "http", lowered != "https" else { return nil }
         return beforeScheme + afterScheme.dropFirst(beforeScheme.count)
     }
 
@@ -82,7 +88,7 @@ final class AppState {
             return false
         }
 
-        let hasScheme = trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://")
+        let hasScheme = hasExplicitHTTPScheme(trimmed)
         let host = parseHost(trimmed)
         let isLocal: Bool = {
             guard let host else { return true }
@@ -124,6 +130,16 @@ final class AppState {
             warning: parsed == nil ? L10n.t(.errorInvalidBaseURL) : (scheme == "http" && !isTailscale ? L10n.t(.errorUsingLanHttp) : nil)
         )
     }
+
+    /// Returns a canonical server address suitable for persistence and history de-duplication.
+    nonisolated static func normalizedServerAddress(_ raw: String) -> String? {
+        let info = serverURLInfo(raw)
+        guard info.isAllowed, let normalized = info.normalized else { return nil }
+        guard var components = URLComponents(string: normalized) else { return normalized }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        return components.string ?? normalized
+    }
     private var _serverURL: String = APIClient.defaultServer
     var serverURL: String {
         get { _serverURL }
@@ -131,6 +147,11 @@ final class AppState {
             _serverURL = newValue
             UserDefaults.standard.set(newValue, forKey: Self.serverURLKey)
         }
+    }
+
+    private var _serverURLHistory: [String] = []
+    var serverURLHistory: [String] {
+        _serverURLHistory
     }
 
     private var _username: String = ""
@@ -156,6 +177,7 @@ final class AppState {
     }
 
     private static let serverURLKey = "serverURL"
+    private static let serverURLHistoryKey = "serverURLHistory"
     private static let usernameKey = "username"
     private static let passwordKeychainKey = "password"
     private static let aiBuilderBaseURLKey = "aiBuilderBaseURL"
@@ -180,6 +202,13 @@ final class AppState {
             }
         } else {
             _serverURL = APIClient.defaultServer
+        }
+        if let storedHistory = UserDefaults.standard.array(forKey: Self.serverURLHistoryKey) as? [String] {
+            _serverURLHistory = storedHistory.compactMap { Self.normalizedServerAddress($0) }.reduce(into: []) { result, address in
+                guard !result.contains(address) else { return }
+                result.append(address)
+            }
+            persistServerURLHistory()
         }
         _username = UserDefaults.standard.string(forKey: Self.usernameKey) ?? ""
         _password = KeychainHelper.load(forKey: Self.passwordKeychainKey) ?? ""
@@ -684,6 +713,39 @@ final class AppState {
         self.password = password ?? ""
     }
 
+    func rememberSuccessfulServerAddress(_ raw: String? = nil) {
+        guard let normalized = Self.normalizedServerAddress(raw ?? serverURL) else { return }
+        if serverURL != normalized {
+            serverURL = normalized
+        }
+        _serverURLHistory.removeAll { $0 == normalized }
+        _serverURLHistory.insert(normalized, at: 0)
+        persistServerURLHistory()
+    }
+
+    func removeServerAddressFromHistory(_ address: String) {
+        guard let normalized = Self.normalizedServerAddress(address) else { return }
+        let originalCount = _serverURLHistory.count
+        _serverURLHistory.removeAll { $0 == normalized }
+        if _serverURLHistory.count != originalCount {
+            persistServerURLHistory()
+        }
+    }
+
+    func clearServerAddressHistory() {
+        guard !_serverURLHistory.isEmpty else { return }
+        _serverURLHistory = []
+        persistServerURLHistory()
+    }
+
+    private func persistServerURLHistory() {
+        if _serverURLHistory.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.serverURLHistoryKey)
+            return
+        }
+        UserDefaults.standard.set(_serverURLHistory, forKey: Self.serverURLHistoryKey)
+    }
+
     func testConnection() async {
         connectionError = nil
 
@@ -699,6 +761,9 @@ final class AppState {
             let health = try await apiClient.health()
             isConnected = health.healthy
             serverVersion = health.version
+            if health.healthy {
+                rememberSuccessfulServerAddress(baseURL)
+            }
         } catch {
             isConnected = false
             connectionError = error.localizedDescription
