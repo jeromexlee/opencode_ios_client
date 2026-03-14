@@ -150,6 +150,53 @@ struct OpenCodeClientTests {
         #expect(message.tokens?.total == 15)
     }
 
+    @Test func imageAttachmentDataURL() {
+        let attachment = ImageAttachment(
+            data: Data([0x01, 0x02, 0x03]),
+            mime: "image/png",
+            filename: "test.png"
+        )
+        #expect(attachment.dataURL == "data:image/png;base64,AQID")
+    }
+
+    @Test func filePartDecodingForImage() throws {
+        let json = """
+        {
+          "id":"p1",
+          "messageID":"m1",
+          "sessionID":"s1",
+          "type":"file",
+          "mime":"image/png",
+          "url":"data:image/png;base64,AQID",
+          "filename":"test.png"
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let part = try JSONDecoder().decode(Part.self, from: data)
+        #expect(part.isFile == true)
+        #expect(part.isImageFile == true)
+        #expect(part.filename == "test.png")
+        #expect(part.imageData == Data([0x01, 0x02, 0x03]))
+    }
+
+    @Test @MainActor func optimisticUserMessageIncludesImages() {
+        let state = AppState()
+        state.currentSessionID = "s1"
+        let image = ImageAttachment(
+            data: Data([0x01, 0x02, 0x03]),
+            mime: "image/png",
+            filename: "shot.png"
+        )
+
+        let messageID = state.appendOptimisticUserMessage("look", images: [image])
+
+        let row = state.messages.last(where: { $0.info.id == messageID })
+        #expect(row != nil)
+        #expect(row?.parts.count == 2)
+        #expect(row?.parts.contains(where: { $0.isFile && $0.filename == "shot.png" }) == true)
+        #expect(row?.parts.contains(where: { $0.isText && $0.text == "look" }) == true)
+    }
+
     // Regression: server.connected event has no directory; SSEEvent.directory must be optional
     @Test func sseEventDecodingWithoutDirectory() throws {
         let json = """

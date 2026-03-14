@@ -354,6 +354,7 @@ final class AppState {
     var serverVersion: String?
     var connectionError: String?
     var sendError: String?
+    var pendingImages: [ImageAttachment] = []
 
     // Session activity (rendered in transcript; session-scoped)
     var sessionActivities: [String: SessionActivity] = [:]
@@ -1211,17 +1212,31 @@ final class AppState {
         expandedPaths.contains(path)
     }
 
+    func addImage(_ attachment: ImageAttachment) {
+        pendingImages.append(attachment)
+    }
+
+    func removeImage(_ id: UUID) {
+        pendingImages.removeAll { $0.id == id }
+    }
+
+    func clearPendingImages() {
+        pendingImages = []
+    }
+
     func sendMessage(_ text: String) async -> Bool {
         sendError = nil
         guard let sessionID = currentSessionID else {
             sendError = L10n.t(.chatSelectSessionFirst)
             return false
         }
-        let tempMessageID = appendOptimisticUserMessage(text)
+        let images = pendingImages
+        let tempMessageID = appendOptimisticUserMessage(text, images: images)
         let model = selectedModel.map { Message.ModelInfo(providerID: $0.providerID, modelID: $0.modelID) }
         let agentName = selectedAgent?.name ?? "build"
         do {
-            try await apiClient.promptAsync(sessionID: sessionID, text: text, agent: agentName, model: model)
+            try await apiClient.promptAsync(sessionID: sessionID, text: text, images: images, agent: agentName, model: model)
+            clearPendingImages()
             return true
         } catch {
             let recovered = await recoverFromMissingCurrentSessionIfNeeded(error: error, requestedSessionID: sessionID)
@@ -1232,11 +1247,10 @@ final class AppState {
     }
 
     @discardableResult
-    func appendOptimisticUserMessage(_ text: String) -> String {
+    func appendOptimisticUserMessage(_ text: String, images: [ImageAttachment] = []) -> String {
         guard let sessionID = currentSessionID else { return "" }
         let now = Int(Date().timeIntervalSince1970 * 1000)
         let messageID = "temp-user-\(UUID().uuidString)"
-        let partID = "temp-part-\(messageID)"
         let message = Message(
             id: messageID,
             sessionID: sessionID,
@@ -1251,21 +1265,45 @@ final class AppState {
             tokens: nil,
             cost: nil
         )
-        let part = Part(
-            id: partID,
-            messageID: messageID,
-            sessionID: sessionID,
-            type: "text",
-            text: text,
-            tool: nil,
-            callID: nil,
-            state: nil,
-            metadata: nil,
-            files: nil
-        )
-        let row = MessageWithParts(info: message, parts: [part])
+        var parts: [Part] = images.enumerated().map { index, image in
+            Part(
+                id: "temp-file-\(messageID)-\(index)",
+                messageID: messageID,
+                sessionID: sessionID,
+                type: "file",
+                text: nil,
+                mime: image.mime,
+                url: image.dataURL,
+                filename: image.filename,
+                tool: nil,
+                callID: nil,
+                state: nil,
+                metadata: nil,
+                files: nil
+            )
+        }
+        if !text.isEmpty || parts.isEmpty {
+            parts.append(
+                Part(
+                    id: "temp-part-\(messageID)",
+                    messageID: messageID,
+                    sessionID: sessionID,
+                    type: "text",
+                    text: text,
+                    mime: nil,
+                    url: nil,
+                    filename: nil,
+                    tool: nil,
+                    callID: nil,
+                    state: nil,
+                    metadata: nil,
+                    files: nil
+                )
+            )
+        }
+        let row = MessageWithParts(info: message, parts: parts)
         messages.append(row)
-        partsByMessage[messageID] = [part]
+        partsByMessage[messageID] = parts
         return messageID
     }
 
@@ -1518,6 +1556,9 @@ final class AppState {
                                 sessionID: sessionID,
                                 type: "reasoning",
                                 text: nil,
+                                mime: nil,
+                                url: nil,
+                                filename: nil,
                                 tool: nil,
                                 callID: nil,
                                 state: nil,
@@ -1701,6 +1742,9 @@ final class AppState {
             sessionID: sessionID,
             type: type,
             text: text,
+            mime: nil,
+            url: nil,
+            filename: nil,
             tool: nil,
             callID: nil,
             state: nil,

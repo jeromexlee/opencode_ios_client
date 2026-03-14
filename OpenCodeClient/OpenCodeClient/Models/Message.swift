@@ -229,6 +229,9 @@ struct Part: Codable, Identifiable {
     let sessionID: String
     let type: String
     let text: String?
+    let mime: String?
+    let url: String?
+    let filename: String?
     let tool: String?
     let callID: String?
     let state: PartStateBridge?
@@ -316,9 +319,21 @@ struct Part: Codable, Identifiable {
     }
 
     var isText: Bool { type == "text" }
+    var isFile: Bool { type == "file" }
     var isReasoning: Bool { type == "reasoning" }
     var isTool: Bool { type == "tool" }
     var isPatch: Bool { type == "patch" }
+    var isImageFile: Bool {
+        guard isFile else { return false }
+        if let mime, mime.hasPrefix("image/") {
+            return true
+        }
+        return url?.hasPrefix("data:image/") ?? false
+    }
+    var imageData: Data? {
+        guard isImageFile, let url else { return nil }
+        return Self.dataURLPayload(from: url)
+    }
 
     /// 可跳转的文件路径列表：来自 files 数组、metadata.path、或 state.input 中的 path/patchText 解析
     var filePathsForNavigation: [String] {
@@ -336,4 +351,10 @@ struct Part: Codable, Identifiable {
     }
     var isStepStart: Bool { type == "step-start" }
     var isStepFinish: Bool { type == "step-finish" }
+
+    private static func dataURLPayload(from url: String) -> Data? {
+        guard let marker = url.range(of: ";base64,") else { return nil }
+        let payload = String(url[marker.upperBound...])
+        return Data(base64Encoded: payload)
+    }
 }

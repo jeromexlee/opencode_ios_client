@@ -87,6 +87,12 @@ enum L10n {
         case chatCreateDisabledHint
 
         case chatInputPlaceholder
+        case chatAttachImage
+        case chatPhotoLibrary
+        case chatCamera
+        case chatPasteFromClipboard
+        case chatImageTooLarge
+        case chatNoImageInClipboard
         case chatSendFailed
         case chatRenameSession
         case chatRenameSessionPlaceholder
@@ -292,6 +298,12 @@ enum L10n {
         Key.chatCreateDisabledHint.rawValue: "New sessions can only be created when using Server default project. To create sessions in another project, start OpenCode from the command line with a different working directory, then select Server default here.",
 
         Key.chatInputPlaceholder.rawValue: "Ask anything...",
+        Key.chatAttachImage.rawValue: "Attach Image",
+        Key.chatPhotoLibrary.rawValue: "Photo Library",
+        Key.chatCamera.rawValue: "Camera",
+        Key.chatPasteFromClipboard.rawValue: "Paste from Clipboard",
+        Key.chatImageTooLarge.rawValue: "Image is too large (max 5MB)",
+        Key.chatNoImageInClipboard.rawValue: "No image in clipboard",
         Key.chatSendFailed.rawValue: "Send failed",
         Key.chatRenameSession.rawValue: "Rename Session",
         Key.chatRenameSessionPlaceholder.rawValue: "Input new title",
@@ -500,6 +512,12 @@ enum L10n {
         Key.chatCreateDisabledHint.rawValue: "新建 session 仅在选择 Server default 时可用。要在其他 project 下创建，请用命令行启动 OpenCode 并指定不同的工作目录，然后在此选择 Server default。",
 
         Key.chatInputPlaceholder.rawValue: "输入你的问题...",
+        Key.chatAttachImage.rawValue: "添加图片",
+        Key.chatPhotoLibrary.rawValue: "相册",
+        Key.chatCamera.rawValue: "相机",
+        Key.chatPasteFromClipboard.rawValue: "从剪贴板粘贴",
+        Key.chatImageTooLarge.rawValue: "图片过大（最大 5MB）",
+        Key.chatNoImageInClipboard.rawValue: "剪贴板中没有图片",
         Key.chatSendFailed.rawValue: "发送失败",
         Key.chatRenameSession.rawValue: "重命名 Session",
         Key.chatRenameSessionPlaceholder.rawValue: "输入新标题",

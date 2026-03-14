@@ -5,6 +5,15 @@
 
 import SwiftUI
 import MarkdownUI
+#if canImport(UIKit)
+import UIKit
+#endif
+
+private struct MessagePreviewImage: Identifiable {
+    let id: String
+    let data: Data
+    let filename: String?
+}
 
 struct MessageRowView: View {
     let message: MessageWithParts
@@ -13,6 +22,7 @@ struct MessageRowView: View {
     let onOpenResolvedPath: (String) -> Void
     let onOpenFilesTab: () -> Void
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var selectedPreviewImage: MessagePreviewImage?
 
     private var cardGridColumnCount: Int { sizeClass == .regular ? 3 : 2 }
     private var cardGridColumns: [GridItem] {
@@ -79,6 +89,16 @@ struct MessageRowView: View {
         Self.hasMarkdownSyntax(text)
     }
 
+    private var userTextParts: [Part] {
+        message.parts.filter {
+            $0.isText && !($0.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        }
+    }
+
+    private var userImageParts: [Part] {
+        message.parts.filter { $0.isImageFile }
+    }
+
     static func hasMarkdownSyntax(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
@@ -104,22 +124,59 @@ struct MessageRowView: View {
                 assistantMessageView
             }
         }
+        .fullScreenCover(item: $selectedPreviewImage) { preview in
+            ImagePreviewScreen(preview: preview)
+        }
     }
 
     private var userMessageView: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(message.parts.filter { $0.isText }, id: \.id) { part in
-                markdownText(part.text ?? "")
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+            if !userImageParts.isEmpty {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(3, max(1, userImageParts.count))),
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+                    ForEach(userImageParts, id: \.id) { part in
+                        if let data = part.imageData, let uiImage = UIImage(data: data) {
+                            Button {
+                                selectedPreviewImage = MessagePreviewImage(id: part.id, data: data, filename: part.filename)
+                            } label: {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(minHeight: 120, maxHeight: 180)
+                                    .frame(maxWidth: .infinity)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.accentColor.opacity(0.07))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.accentColor.opacity(0.14), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.accentColor.opacity(0.07))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.accentColor.opacity(0.14), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            if !userTextParts.isEmpty {
+                ForEach(userTextParts, id: \.id) { part in
+                    markdownText(part.text ?? "")
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.accentColor.opacity(0.07))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.accentColor.opacity(0.14), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
 
             if let model = message.info.resolvedModel {
                 Text("\(model.providerID)/\(model.modelID)")
@@ -187,6 +244,43 @@ struct MessageRowView: View {
             )
         } else {
             EmptyView()
+        }
+    }
+}
+
+private struct ImagePreviewScreen: View {
+    let preview: MessagePreviewImage
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+#if canImport(UIKit)
+                if let uiImage = UIImage(data: preview.data) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding()
+                        .background(Color.black)
+                        .onTapGesture {
+                            dismiss()
+                        }
+                }
+#endif
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(L10n.t(.appClose)) {
+                        dismiss()
+                    }
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .navigationTitle(preview.filename ?? "")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }

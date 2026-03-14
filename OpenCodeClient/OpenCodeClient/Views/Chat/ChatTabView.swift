@@ -4,6 +4,8 @@
 //
 
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 import os
 #if canImport(UIKit)
 import UIKit
@@ -54,10 +56,19 @@ struct ChatTabView: View {
     @State private var isRecording = false
     @State private var isTranscribing = false
     @State private var speechError: String?
+    @State private var imageError: String?
+    @State private var showImagePicker = false
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var pendingScrollTask: Task<Void, Never>?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var useGridCards: Bool { sizeClass == .regular }
+    private var canSendCurrentInput: Bool {
+        (!trimmedInputText.isEmpty || !state.pendingImages.isEmpty) && !isSending && !isRecording && !isTranscribing
+    }
+    private var trimmedInputText: String {
+        inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     fileprivate struct TurnActivity: Identifiable {
         enum State {
@@ -397,16 +408,61 @@ struct ChatTabView: View {
                 }
 
                  Divider()
-                 HStack(alignment: .bottom, spacing: 10) {
-                    TextField(L10n.t(.chatInputPlaceholder), text: $inputText, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .lineLimit(3...8)
-                        .submitLabel(.send)
-                        .onSubmit {
-                            sendCurrentInput()
+                VStack(spacing: 10) {
+                    if !state.pendingImages.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(state.pendingImages) { img in
+                                    ZStack(alignment: .topTrailing) {
+                                        if let uiImage = UIImage(data: img.data) {
+                                            Image(uiImage: uiImage)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(width: 60, height: 60)
+                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        }
+                                        Button {
+                                            state.removeImage(img.id)
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.caption)
+                                                .foregroundStyle(.white, .black.opacity(0.6))
+                                        }
+                                        .offset(x: 4, y: -4)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                        .frame(height: 68)
+                    }
+
+                    HStack(alignment: .bottom, spacing: 10) {
+                        HStack(alignment: .bottom, spacing: 10) {
+                            Button {
+                                showImagePicker = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(.systemBackground))
+                                    .clipShape(Circle())
+                            }
+                            .accessibilityLabel(L10n.t(.chatAttachImage))
+                            .disabled(isSending)
+
+                            TextField(L10n.t(.chatInputPlaceholder), text: $inputText, axis: .vertical)
+                                .textFieldStyle(.plain)
+                                .lineLimit(3...8)
+                                .submitLabel(.send)
+                                .onSubmit {
+                                    sendCurrentInput()
+                                }
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color(.systemGray6))
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .overlay(
@@ -414,45 +470,46 @@ struct ChatTabView: View {
                                 .stroke(Color(.systemGray4), lineWidth: 0.5)
                         )
 
-                    VStack(spacing: 8) {
-                        Button {
-                            Task { await toggleRecording() }
-                        } label: {
-                            if isTranscribing {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Image(systemName: isRecording ? "mic.circle.fill" : "mic.circle")
-                                    .font(.title)
-                                    .symbolRenderingMode(.hierarchical)
-                                    .foregroundStyle(isRecording ? .red : .secondary)
-                            }
-                        }
-                        .disabled(isSending || isTranscribing)
-
-                        Button {
-                            sendCurrentInput()
-                        } label: {
-                            if isSending {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .font(.title)
-                                    .symbolRenderingMode(.hierarchical)
-                                    .foregroundColor(.accentColor)
-                            }
-                        }
-                        .keyboardShortcut(.return, modifiers: [])
-                        .disabled(inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending || isRecording || isTranscribing)
-
-                        if state.isBusy {
+                        VStack(spacing: 8) {
                             Button {
-                                Task { await state.abortSession() }
+                                Task { await toggleRecording() }
                             } label: {
-                                Image(systemName: "stop.circle.fill")
-                                    .font(.title)
-                                    .foregroundStyle(.red)
+                                if isTranscribing {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: isRecording ? "mic.circle.fill" : "mic.circle")
+                                        .font(.title)
+                                        .symbolRenderingMode(.hierarchical)
+                                        .foregroundStyle(isRecording ? .red : .secondary)
+                                }
+                            }
+                            .disabled(isSending || isTranscribing)
+
+                            Button {
+                                sendCurrentInput()
+                            } label: {
+                                if isSending {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "arrow.up.circle.fill")
+                                        .font(.title)
+                                        .symbolRenderingMode(.hierarchical)
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                            .keyboardShortcut(.return, modifiers: [])
+                            .disabled(!canSendCurrentInput)
+
+                            if state.isBusy {
+                                Button {
+                                    Task { await state.abortSession() }
+                                } label: {
+                                    Image(systemName: "stop.circle.fill")
+                                        .font(.title)
+                                        .foregroundStyle(.red)
+                                }
                             }
                         }
                     }
@@ -474,6 +531,13 @@ struct ChatTabView: View {
             .sheet(isPresented: $showSessionList) {
                 SessionListView(state: state)
             }
+            .photosPicker(
+                isPresented: $showImagePicker,
+                selection: $selectedPhotoItems,
+                maxSelectionCount: 10,
+                matching: .images,
+                preferredItemEncoding: .automatic
+            )
             .alert(L10n.t(.chatSendFailed), isPresented: Binding(
                 get: { state.sendError != nil },
                 set: { if !$0 { state.sendError = nil } }
@@ -503,6 +567,14 @@ struct ChatTabView: View {
             } message: {
                 Text(speechError ?? "")
             }
+            .alert(L10n.t(.chatAttachImage), isPresented: Binding(
+                get: { imageError != nil },
+                set: { if !$0 { imageError = nil } }
+            )) {
+                Button(L10n.t(.commonOk)) { imageError = nil }
+            } message: {
+                Text(imageError ?? "")
+            }
             .onAppear {
                 syncDraftFromState(sessionID: state.currentSessionID)
             }
@@ -513,6 +585,12 @@ struct ChatTabView: View {
             .onChange(of: inputText) { _, newValue in
                 guard !isSyncingDraft else { return }
                 state.setDraftText(newValue, for: state.currentSessionID)
+            }
+            .task(id: selectedPhotoItems.count) {
+                guard !selectedPhotoItems.isEmpty else { return }
+                let items = selectedPhotoItems
+                selectedPhotoItems = []
+                await importSelectedPhotos(items)
             }
         }
     }
@@ -543,8 +621,8 @@ struct ChatTabView: View {
 
     private func sendCurrentInput() {
         guard !isSending else { return }
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let text = trimmedInputText
+        guard !text.isEmpty || !state.pendingImages.isEmpty else { return }
 
         inputText = ""
         isSending = true
@@ -554,6 +632,102 @@ struct ChatTabView: View {
             if !success {
                 inputText = text
             }
+        }
+    }
+
+    @MainActor
+    private func importSelectedPhotos(_ items: [PhotosPickerItem]) async {
+        for (index, item) in items.enumerated() {
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                let suggestedMime = item.supportedContentTypes.first?.preferredMIMEType
+                if let attachment = prepareImageAttachment(
+                    data: data,
+                    suggestedFilename: "image-\(Int(Date().timeIntervalSince1970))-\(index)",
+                    suggestedMime: suggestedMime
+                ) {
+                    state.addImage(attachment)
+                }
+            } catch {
+                imageError = error.localizedDescription
+            }
+        }
+    }
+
+    private func prepareImageAttachment(
+        data: Data,
+        suggestedFilename: String,
+        suggestedMime: String?
+    ) -> ImageAttachment? {
+#if canImport(UIKit)
+        let normalizedMime = preferredImageMime(for: data, suggestedMime: suggestedMime)
+        let supportsPassthrough = ["image/png", "image/jpeg", "image/webp", "image/gif"].contains(normalizedMime)
+
+        var outputData = data
+        var outputMime = normalizedMime
+        guard let image = UIImage(data: data) else {
+            imageError = L10n.t(.chatImageTooLarge)
+            return nil
+        }
+
+        if data.count > 1_000_000 || !supportsPassthrough {
+            guard let compressed = image.jpegData(compressionQuality: 0.7) else {
+                imageError = L10n.t(.chatImageTooLarge)
+                return nil
+            }
+            outputData = compressed
+            outputMime = "image/jpeg"
+        }
+
+        guard outputData.count <= 5_000_000 else {
+            imageError = L10n.t(.chatImageTooLarge)
+            return nil
+        }
+
+        return ImageAttachment(
+            data: outputData,
+            mime: outputMime,
+            filename: "\(suggestedFilename).\(fileExtension(for: outputMime))"
+        )
+#else
+        return nil
+#endif
+    }
+
+    private func preferredImageMime(for data: Data, suggestedMime: String?) -> String {
+        if let suggestedMime,
+           ["image/png", "image/jpeg", "image/webp", "image/gif"].contains(suggestedMime) {
+            return suggestedMime
+        }
+
+        let bytes = [UInt8](data.prefix(12))
+        if bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+            return "image/png"
+        }
+        if bytes.starts(with: [0xFF, 0xD8, 0xFF]) {
+            return "image/jpeg"
+        }
+        if bytes.starts(with: [0x47, 0x49, 0x46, 0x38]) {
+            return "image/gif"
+        }
+        if bytes.count >= 12,
+           bytes[0...3].elementsEqual([0x52, 0x49, 0x46, 0x46]),
+           bytes[8...11].elementsEqual([0x57, 0x45, 0x42, 0x50]) {
+            return "image/webp"
+        }
+        return "image/jpeg"
+    }
+
+    private func fileExtension(for mime: String) -> String {
+        switch mime {
+        case "image/png":
+            return "png"
+        case "image/gif":
+            return "gif"
+        case "image/webp":
+            return "webp"
+        default:
+            return "jpg"
         }
     }
 

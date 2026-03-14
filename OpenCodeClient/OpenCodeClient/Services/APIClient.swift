@@ -233,22 +233,55 @@ actor APIClient {
         return try? decoder.decode(type, from: data)
     }
 
-    func promptAsync(sessionID: String, text: String, agent: String = "build", model: Message.ModelInfo?) async throws {
+    func promptAsync(
+        sessionID: String,
+        text: String,
+        images: [ImageAttachment] = [],
+        agent: String = "build",
+        model: Message.ModelInfo?
+    ) async throws {
         struct PromptBody: Encodable {
             let parts: [PartInput]
             let agent: String
             let model: ModelInput?
-            struct PartInput: Encodable {
-                let type = "text"
-                let text: String
+
+            enum PartInput: Encodable {
+                case text(String)
+                case file(mime: String, url: String, filename: String?)
+
+                private enum CodingKeys: String, CodingKey {
+                    case type
+                    case text
+                    case mime
+                    case url
+                    case filename
+                }
+
+                func encode(to encoder: Encoder) throws {
+                    var c = encoder.container(keyedBy: CodingKeys.self)
+                    switch self {
+                    case .text(let text):
+                        try c.encode("text", forKey: .type)
+                        try c.encode(text, forKey: .text)
+                    case .file(let mime, let url, let filename):
+                        try c.encode("file", forKey: .type)
+                        try c.encode(mime, forKey: .mime)
+                        try c.encode(url, forKey: .url)
+                        try c.encodeIfPresent(filename, forKey: .filename)
+                    }
+                }
             }
+
             struct ModelInput: Encodable {
                 let providerID: String
                 let modelID: String
             }
         }
+        let imageParts = images.map { image in
+            PromptBody.PartInput.file(mime: image.mime, url: image.dataURL, filename: image.filename)
+        }
         let body = PromptBody(
-            parts: [.init(text: text)],
+            parts: imageParts + [.text(text)],
             agent: agent,
             model: model.map { .init(providerID: $0.providerID, modelID: $0.modelID) }
         )
