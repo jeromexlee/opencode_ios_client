@@ -30,6 +30,11 @@ private enum MessageGroupItem: Identifiable {
     }
 }
 
+private enum ComposerMode: String {
+    case chat
+    case shell
+}
+
 struct ChatTabView: View {
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "OpenCodeClient",
@@ -59,15 +64,26 @@ struct ChatTabView: View {
     @State private var imageError: String?
     @State private var showImagePicker = false
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var composerMode: ComposerMode = .chat
     @State private var pendingScrollTask: Task<Void, Never>?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var useGridCards: Bool { sizeClass == .regular }
     private var canSendCurrentInput: Bool {
-        (!trimmedInputText.isEmpty || !state.pendingImages.isEmpty) && !isSending && !isRecording && !isTranscribing
+        let hasPayload = composerMode == .chat
+            ? (!trimmedInputText.isEmpty || !state.pendingImages.isEmpty)
+            : !trimmedInputText.isEmpty
+        let recordingBlocked = composerMode == .chat ? (isRecording || isTranscribing) : false
+        return hasPayload && !isSending && !recordingBlocked
     }
     private var trimmedInputText: String {
         inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    private var composerPlaceholder: String {
+        composerMode == .chat ? L10n.t(.chatInputPlaceholder) : L10n.t(.chatShellInputPlaceholder)
+    }
+    private var composerModeTitle: String {
+        composerMode == .chat ? L10n.t(.chatModeChat) : L10n.t(.chatModeShell)
     }
 
     fileprivate struct TurnActivity: Identifiable {
@@ -409,7 +425,7 @@ struct ChatTabView: View {
 
                  Divider()
                 VStack(spacing: 10) {
-                    if !state.pendingImages.isEmpty {
+                    if composerMode == .chat, !state.pendingImages.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
                                 ForEach(state.pendingImages) { img in
@@ -439,26 +455,53 @@ struct ChatTabView: View {
 
                     HStack(alignment: .bottom, spacing: 10) {
                         HStack(alignment: .bottom, spacing: 10) {
-                            Button {
-                                showImagePicker = true
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.title3.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 28, height: 28)
-                                    .background(Color(.systemBackground))
-                                    .clipShape(Circle())
-                            }
-                            .accessibilityLabel(L10n.t(.chatAttachImage))
-                            .disabled(isSending)
+                            VStack(spacing: 8) {
+                                if composerMode == .chat {
+                                    Button {
+                                        showImagePicker = true
+                                    } label: {
+                                        Image(systemName: "plus")
+                                            .font(.title3.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 28, height: 28)
+                                            .background(Color(.systemBackground))
+                                            .clipShape(Circle())
+                                    }
+                                    .accessibilityLabel(L10n.t(.chatAttachImage))
+                                    .disabled(isSending)
+                                } else {
+                                    Color.clear
+                                        .frame(width: 28, height: 28)
+                                }
 
-                            TextField(L10n.t(.chatInputPlaceholder), text: $inputText, axis: .vertical)
+                                Menu {
+                                    Button(L10n.t(.chatModeChat)) {
+                                        setComposerMode(.chat)
+                                    }
+                                    Button(L10n.t(.chatModeShell)) {
+                                        setComposerMode(.shell)
+                                    }
+                                } label: {
+                                    Image(systemName: composerMode == .shell ? "terminal" : "text.bubble")
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(composerMode == .shell ? Color.orange : Color.secondary)
+                                        .frame(width: 28, height: 28)
+                                        .background(
+                                            Circle()
+                                                .fill(composerMode == .shell ? Color.orange.opacity(0.12) : Color(.systemBackground))
+                                        )
+                                }
+                                .accessibilityLabel(composerModeTitle)
+                            }
+
+                            TextField(composerPlaceholder, text: $inputText, axis: .vertical)
                                 .textFieldStyle(.plain)
                                 .lineLimit(3...8)
                                 .submitLabel(.send)
                                 .onSubmit {
                                     sendCurrentInput()
                                 }
+                                .font(composerMode == .shell ? .system(.body, design: .monospaced) : .body)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
@@ -471,20 +514,22 @@ struct ChatTabView: View {
                         )
 
                         VStack(spacing: 8) {
-                            Button {
-                                Task { await toggleRecording() }
-                            } label: {
-                                if isTranscribing {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                } else {
-                                    Image(systemName: isRecording ? "mic.circle.fill" : "mic.circle")
-                                        .font(.title)
-                                        .symbolRenderingMode(.hierarchical)
-                                        .foregroundStyle(isRecording ? .red : .secondary)
+                            if composerMode == .chat {
+                                Button {
+                                    Task { await toggleRecording() }
+                                } label: {
+                                    if isTranscribing {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                    } else {
+                                        Image(systemName: isRecording ? "mic.circle.fill" : "mic.circle")
+                                            .font(.title)
+                                            .symbolRenderingMode(.hierarchical)
+                                            .foregroundStyle(isRecording ? .red : .secondary)
+                                    }
                                 }
+                                .disabled(isSending || isTranscribing)
                             }
-                            .disabled(isSending || isTranscribing)
 
                             Button {
                                 sendCurrentInput()
@@ -622,16 +667,26 @@ struct ChatTabView: View {
     private func sendCurrentInput() {
         guard !isSending else { return }
         let text = trimmedInputText
-        guard !text.isEmpty || !state.pendingImages.isEmpty else { return }
+        guard composerMode == .shell ? !text.isEmpty : (!text.isEmpty || !state.pendingImages.isEmpty) else { return }
 
         inputText = ""
         isSending = true
         Task {
-            let success = await state.sendMessage(text)
+            let success = composerMode == .shell
+                ? await state.sendShellCommand(text)
+                : await state.sendMessage(text)
             isSending = false
             if !success {
                 inputText = text
             }
+        }
+    }
+
+    private func setComposerMode(_ mode: ComposerMode) {
+        guard composerMode != mode else { return }
+        composerMode = mode
+        if mode == .shell {
+            state.clearPendingImages()
         }
     }
 

@@ -365,6 +365,7 @@ final class AppState {
     // Debounce session activity text changes (avoid rapid flipping).
     private var activityTextLastChangeAt: [String: Date] = [:]
     private var activityTextPendingTask: [String: Task<Void, Never>] = [:]
+    private var shellReconciliationTasks: [String: Task<Void, Never>] = [:]
 
     var currentSessionActivity: SessionActivity? {
         guard let sid = currentSessionID else { return nil }
@@ -1246,6 +1247,32 @@ final class AppState {
         }
     }
 
+    func sendShellCommand(_ command: String) async -> Bool {
+        sendError = nil
+        guard let sessionID = currentSessionID else {
+            sendError = L10n.t(.chatSelectSessionFirst)
+            return false
+        }
+        let tempMessageID = appendOptimisticUserMessage(command)
+        let model = selectedModel.map { Message.ModelInfo(providerID: $0.providerID, modelID: $0.modelID) }
+        let agentName = selectedAgent?.name ?? "build"
+        do {
+            let response = try await apiClient.shell(sessionID: sessionID, command: command, agent: agentName, model: model)
+            if Self.shouldApplySessionScopedResult(requestedSessionID: sessionID, currentSessionID: currentSessionID),
+               response.info.sessionID == sessionID {
+                upsertLocalMessage(response)
+                scheduleShellReconciliation(for: sessionID)
+            }
+            await syncSessionStatusesFromPoll()
+            return true
+        } catch {
+            let recovered = await recoverFromMissingCurrentSessionIfNeeded(error: error, requestedSessionID: sessionID)
+            sendError = recovered ? L10n.t(.errorSessionNotFound) : error.localizedDescription
+            removeMessage(id: tempMessageID)
+            return false
+        }
+    }
+
     @discardableResult
     func appendOptimisticUserMessage(_ text: String, images: [ImageAttachment] = []) -> String {
         guard let sessionID = currentSessionID else { return "" }
@@ -1310,6 +1337,34 @@ final class AppState {
     func removeMessage(id: String) {
         messages.removeAll { $0.info.id == id }
         partsByMessage[id] = nil
+    }
+
+    private func upsertLocalMessage(_ message: MessageWithParts) {
+        if let idx = messages.firstIndex(where: { $0.info.id == message.info.id }) {
+            messages[idx] = message
+        } else {
+            let createdAt = Self.normalizeEpochMilliseconds(message.info.time.created)
+            let insertIndex = messages.firstIndex {
+                Self.normalizeEpochMilliseconds($0.info.time.created) > createdAt
+            } ?? messages.endIndex
+            messages.insert(message, at: insertIndex)
+        }
+        partsByMessage[message.info.id] = message.parts
+    }
+
+    private func scheduleShellReconciliation(for sessionID: String) {
+        shellReconciliationTasks[sessionID]?.cancel()
+        shellReconciliationTasks[sessionID] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.shellReconciliationTasks[sessionID] = nil }
+
+            for delay in [0.35, 1.0, 2.0] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                guard Self.shouldApplySessionScopedResult(requestedSessionID: sessionID, currentSessionID: self.currentSessionID) else { return }
+                await self.loadMessages()
+            }
+        }
     }
 
     private func bootstrapSyncCurrentSession(reason: String) async {
@@ -1461,6 +1516,11 @@ final class AppState {
     /// Async request result should only apply when requested session is still current.
     nonisolated static func shouldApplySessionScopedResult(requestedSessionID: String, currentSessionID: String?) -> Bool {
         requestedSessionID == currentSessionID
+    }
+
+    nonisolated private static func normalizeEpochMilliseconds(_ raw: Int) -> Int {
+        if raw > 0 && raw < 10_000_000_000 { return raw * 1000 }
+        return raw
     }
 
     private func handleSSEEvent(_ event: SSEEvent) async {

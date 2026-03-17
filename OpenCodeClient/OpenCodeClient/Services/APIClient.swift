@@ -292,6 +292,33 @@ actor APIClient {
         }
     }
 
+    func shell(
+        sessionID: String,
+        command: String,
+        agent: String = "build",
+        model: Message.ModelInfo?
+    ) async throws -> MessageWithParts {
+        struct Body: Encodable {
+            let command: String
+            let agent: String
+            let model: ModelInput?
+
+            struct ModelInput: Encodable {
+                let providerID: String
+                let modelID: String
+            }
+        }
+
+        let body = Body(
+            command: command,
+            agent: agent,
+            model: model.map { .init(providerID: $0.providerID, modelID: $0.modelID) }
+        )
+        let bodyData = try JSONEncoder().encode(body)
+        let (data, _) = try await makeRequest(path: "/session/\(sessionID)/shell", method: "POST", body: bodyData)
+        return try JSONDecoder().decode(MessageWithParts.self, from: data)
+    }
+
     func abort(sessionID: String) async throws {
         let (_, response) = try await makeRequest(path: "/session/\(sessionID)/abort", method: "POST")
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {

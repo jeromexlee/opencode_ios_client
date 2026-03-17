@@ -87,6 +87,9 @@ enum L10n {
         case chatCreateDisabledHint
 
         case chatInputPlaceholder
+        case chatShellInputPlaceholder
+        case chatModeChat
+        case chatModeShell
         case chatAttachImage
         case chatPhotoLibrary
         case chatCamera
@@ -298,6 +301,9 @@ enum L10n {
         Key.chatCreateDisabledHint.rawValue: "New sessions can only be created when using Server default project. To create sessions in another project, start OpenCode from the command line with a different working directory, then select Server default here.",
 
         Key.chatInputPlaceholder.rawValue: "Ask anything...",
+        Key.chatShellInputPlaceholder.rawValue: "Run shell command...",
+        Key.chatModeChat.rawValue: "Chat",
+        Key.chatModeShell.rawValue: "Shell",
         Key.chatAttachImage.rawValue: "Attach Image",
         Key.chatPhotoLibrary.rawValue: "Photo Library",
         Key.chatCamera.rawValue: "Camera",
@@ -512,6 +518,9 @@ enum L10n {
         Key.chatCreateDisabledHint.rawValue: "新建 session 仅在选择 Server default 时可用。要在其他 project 下创建，请用命令行启动 OpenCode 并指定不同的工作目录，然后在此选择 Server default。",
 
         Key.chatInputPlaceholder.rawValue: "输入你的问题...",
+        Key.chatShellInputPlaceholder.rawValue: "运行 shell 命令...",
+        Key.chatModeChat.rawValue: "Chat",
+        Key.chatModeShell.rawValue: "Shell",
         Key.chatAttachImage.rawValue: "添加图片",
         Key.chatPhotoLibrary.rawValue: "相册",
         Key.chatCamera.rawValue: "相机",
