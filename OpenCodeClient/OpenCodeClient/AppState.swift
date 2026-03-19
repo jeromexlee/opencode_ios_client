@@ -421,7 +421,7 @@ final class AppState {
         ModelPreset(displayName: "GPT-5.4", providerID: "openai", modelID: "gpt-5.4"),
         ModelPreset(displayName: "GPT-5.3 Codex", providerID: "openai", modelID: "gpt-5.3-codex"),
     ]
-    var selectedModelIndex: Int = 0
+    var selectedModelIndex: Int = 3
     
     var agents: [AgentInfo] = [
         AgentInfo(name: "OpenCode-Builder", description: "Build agent (OpenCode default)", mode: "all", hidden: false, native: false),

@@ -1,5 +1,9 @@
 # 工作记录 - OpenCode iOS 客户端
 
+## 2026-03-19
+
+- 默认模型从 `zai-coding-plan/glm-5` 切换为 `openai/gpt-5.4`，新会话和未保存过模型选择的默认发送路径现在会直接落到 GPT-5.4。
+
 ## 2026-03-17
 
 - 全局 oh-my-opencode.json 默认 agent 从 GLM-5 切换为 sisyphus ultraworker（Claude Opus 4.6）。
