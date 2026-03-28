@@ -553,13 +553,8 @@ struct ChatTabView: View {
                                         .frame(width: 28, height: 28)
                                 }
 
-                                Menu {
-                                    Button(L10n.t(.chatModeChat)) {
-                                        setComposerMode(.chat)
-                                    }
-                                    Button(L10n.t(.chatModeShell)) {
-                                        setComposerMode(.shell)
-                                    }
+                                Button {
+                                    setComposerMode(composerMode == .chat ? .shell : .chat)
                                 } label: {
                                     Image(systemName: composerMode == .shell ? "terminal" : "text.bubble")
                                         .font(.callout.weight(.semibold))
