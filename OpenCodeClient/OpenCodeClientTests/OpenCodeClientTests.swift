@@ -1512,6 +1512,11 @@ struct ModelPresetShortNameTests {
         let preset = ModelPreset(displayName: "Opus 4.6", providerID: "amazon-bedrock", modelID: "us.anthropic.claude-opus-4-6-v1")
         #expect(preset.shortName == "Opus")
     }
+
+    @Test func anthropicOpusShortName() {
+        let preset = ModelPreset(displayName: "Opus 4.6 (Anthropic)", providerID: "anthropic", modelID: "claude-opus-4-6")
+        #expect(preset.shortName == "Opus")
+    }
     
     @Test func sonnetShortName() {
         let preset = ModelPreset(displayName: "Sonnet 4.6", providerID: "amazon-bedrock", modelID: "us.anthropic.claude-sonnet-4-6")
@@ -1531,6 +1536,83 @@ struct ModelPresetShortNameTests {
     @Test func unknownModelFallsBackToDisplayName() {
         let preset = ModelPreset(displayName: "Custom Model", providerID: "custom", modelID: "custom-1")
         #expect(preset.shortName == "Custom Model")
+    }
+}
+
+struct ModelPresetSelectionTests {
+    @Test @MainActor func appStateDefaultsToBedrockOpusPreset() {
+        let state = AppState()
+        #expect(state.selectedModel?.displayName == "Opus 4.6")
+        #expect(state.selectedModel?.providerID == "amazon-bedrock")
+        #expect(state.selectedModel?.modelID == "us.anthropic.claude-opus-4-6-v1")
+    }
+
+    @Test @MainActor func appStateIncludesAnthropicOpusPreset() {
+        let state = AppState()
+        let preset = state.modelPresets.first {
+            $0.displayName == "Opus 4.6 (Anthropic)"
+        }
+
+        #expect(preset?.providerID == "anthropic")
+        #expect(preset?.modelID == "claude-opus-4-6")
+    }
+
+    @Test @MainActor func appStateFallsBackToMostRecentSessionModel() throws {
+        let key = "selectedModelBySession"
+        let currentSessionKey = "currentSessionID"
+        let previous = UserDefaults.standard.data(forKey: key)
+        let previousCurrentSessionID = UserDefaults.standard.string(forKey: currentSessionKey)
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            if let previousCurrentSessionID {
+                UserDefaults.standard.set(previousCurrentSessionID, forKey: currentSessionKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: currentSessionKey)
+            }
+        }
+
+        let saved = [
+            "recent-session": "zai-coding-plan/glm-5"
+        ]
+        UserDefaults.standard.set(try JSONEncoder().encode(saved), forKey: key)
+        UserDefaults.standard.removeObject(forKey: currentSessionKey)
+
+        let state = AppState()
+        let older = Session(
+            id: "older-session",
+            slug: "older-session",
+            projectID: "p1",
+            directory: "/tmp",
+            parentID: nil,
+            title: "Older",
+            version: "1",
+            time: .init(created: 0, updated: 10, archived: nil),
+            share: nil,
+            summary: nil
+        )
+        let recent = Session(
+            id: "recent-session",
+            slug: "recent-session",
+            projectID: "p1",
+            directory: "/tmp",
+            parentID: nil,
+            title: "Recent",
+            version: "1",
+            time: .init(created: 0, updated: 20, archived: nil),
+            share: nil,
+            summary: nil
+        )
+
+        state.sessions = [older, recent]
+        state.selectSession(older)
+
+        #expect(state.selectedModel?.displayName == "GLM-5")
+        #expect(state.selectedModel?.providerID == "zai-coding-plan")
+        #expect(state.selectedModel?.modelID == "glm-5")
     }
 }
 

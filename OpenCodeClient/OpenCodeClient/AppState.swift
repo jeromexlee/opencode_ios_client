@@ -191,7 +191,6 @@ final class AppState {
     private static let showArchivedSessionsKey = "showArchivedSessions"
     private static let selectedProjectWorktreeKey = "selectedProjectWorktree"
     private static let customProjectPathKey = "customProjectPath"
-
     init() {
         if let storedServer = UserDefaults.standard.string(forKey: Self.serverURLKey) {
             if storedServer == APIConstants.legacyDefaultServer {
@@ -240,6 +239,8 @@ final class AppState {
            let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
             selectedModelIDBySessionID = decoded
         }
+
+        selectedModelIndex = defaultModelPresetIndex
     }
 
     // Unsent composer drafts per session.
@@ -432,9 +433,10 @@ final class AppState {
     var streamingPartTexts: [String: String] { get { messageStore.streamingPartTexts } set { messageStore.streamingPartTexts = newValue } }
 
     var modelPresets: [ModelPreset] = [
-        ModelPreset(displayName: "GLM-5", providerID: "zai-coding-plan", modelID: "glm-5"),
         ModelPreset(displayName: "Opus 4.6", providerID: "amazon-bedrock", modelID: "us.anthropic.claude-opus-4-6-v1"),
+        ModelPreset(displayName: "Opus 4.6 (Anthropic)", providerID: "anthropic", modelID: "claude-opus-4-6"),
         ModelPreset(displayName: "Sonnet 4.6", providerID: "amazon-bedrock", modelID: "us.anthropic.claude-sonnet-4-6"),
+        ModelPreset(displayName: "GLM-5", providerID: "zai-coding-plan", modelID: "glm-5"),
         ModelPreset(displayName: "GPT-5.4", providerID: "openai", modelID: "gpt-5.4"),
         ModelPreset(displayName: "GPT-5.3 Codex", providerID: "openai", modelID: "gpt-5.3-codex"),
         ModelPreset(displayName: "GPT-5.2", providerID: "openai", modelID: "gpt-5.2"),
@@ -442,6 +444,14 @@ final class AppState {
         ModelPreset(displayName: "Gemini 3 Flash", providerID: "google", modelID: "gemini-3-flash-preview"),
     ]
     var selectedModelIndex: Int = 0
+    private var defaultModelPresetIndex: Int {
+        guard let recentSessionID = sessions.max(by: { $0.time.updated < $1.time.updated })?.id,
+              let savedModelID = selectedModelIDBySessionID[recentSessionID],
+              let idx = modelPresets.firstIndex(where: { $0.id == savedModelID }) else {
+            return 0
+        }
+        return idx
+    }
     
     var agents: [AgentInfo] = [
         AgentInfo(name: "OpenCode-Builder", description: "Build agent (OpenCode default)", mode: "all", hidden: false, native: false),
@@ -671,9 +681,18 @@ final class AppState {
     }
 
     private func applySavedModelForCurrentSession() {
-        guard let sessionID = currentSessionID else { return }
-        guard let saved = selectedModelIDBySessionID[sessionID] else { return }
-        guard let idx = modelPresets.firstIndex(where: { $0.id == saved }) else { return }
+        guard let sessionID = currentSessionID else {
+            selectedModelIndex = defaultModelPresetIndex
+            return
+        }
+        guard let saved = selectedModelIDBySessionID[sessionID] else {
+            selectedModelIndex = defaultModelPresetIndex
+            return
+        }
+        guard let idx = modelPresets.firstIndex(where: { $0.id == saved }) else {
+            selectedModelIndex = defaultModelPresetIndex
+            return
+        }
         selectedModelIndex = idx
     }
 

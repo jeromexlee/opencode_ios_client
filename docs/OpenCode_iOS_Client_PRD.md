@@ -127,9 +127,10 @@ iPhone 采用底部 Tab Bar，三个 Tab：
 
 | 显示名称 | providerID | modelID |
 |----------|------------|---------|
+| Opus 4.6（默认） | `amazon-bedrock` | `us.anthropic.claude-opus-4-6-v1` |
+| Opus 4.6 (Anthropic) | `anthropic` | `claude-opus-4-6` |
+| Sonnet 4.6 | `amazon-bedrock` | `us.anthropic.claude-sonnet-4-6` |
 | GLM-5 | `zai-coding-plan` | `glm-5` |
-| Opus 4.6 | `anthropic` | `claude-opus-4-6` |
-| Sonnet 4.6 | `anthropic` | `claude-sonnet-4-6` |
 | GPT-5.4 | `openai` | `gpt-5.4` |
 | GPT-5.3 Codex | `openai` | `gpt-5.3-codex` |
 | GPT-5.2 | `openai` | `gpt-5.2` |
@@ -326,7 +327,7 @@ iOS App → 公网 VPS (SSH) → VPS:18080 → 家里 OpenCode (127.0.0.1:4096)
 
 #### 4.4.3 Model Presets
 
-**当前实现**：固定 4 个预设（GPT-5.3 Codex、GPT-5.3 Codex Spark、Opus 4.6、GLM5），无导入、无排序。发送消息时在 body 中携带 `model: { providerID, modelID }`。
+**当前实现**：固定预设列表，默认 `Opus 4.6` 走 Bedrock，并额外提供 `Opus 4.6 (Anthropic)` 直连官方 Anthropic 模型；无导入、无排序。发送消息时在 body 中携带 `model: { providerID, modelID }`。
 
 #### 4.4.3 Project (Workspace)
 
