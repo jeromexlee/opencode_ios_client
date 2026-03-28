@@ -8,6 +8,7 @@ import SwiftUI
 /// iPad / Vision Pro split layout sidebar:
 /// - Top: File tree
 /// - Bottom: Sessions list (selecting switches the chat on the right)
+@MainActor
 struct SplitSidebarView: View {
     @Bindable var state: AppState
 
@@ -58,6 +59,7 @@ struct SplitSidebarView: View {
     }
 }
 
+@MainActor
 private struct SessionsSidebarList: View {
     @Bindable var state: AppState
     @State private var pendingDeleteSession: Session?

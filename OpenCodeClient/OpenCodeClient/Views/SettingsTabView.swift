@@ -5,6 +5,7 @@
 
 import SwiftUI
 
+@MainActor
 struct SettingsTabView: View {
     @Bindable var state: AppState
     @FocusState private var isServerAddressFocused: Bool

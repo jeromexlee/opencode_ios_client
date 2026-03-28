@@ -5,6 +5,7 @@
 
 import SwiftUI
 
+@MainActor
 struct FilesTabView: View {
     @Bindable var state: AppState
 

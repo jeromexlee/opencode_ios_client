@@ -64,6 +64,7 @@ extension AppState {
     }
 }
 
+@MainActor
 struct ContextUsageButton: View {
     @Bindable var state: AppState
     @State private var showSheet = false

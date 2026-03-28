@@ -7,6 +7,7 @@ import Foundation
 import Observation
 
 @Observable
+@MainActor
 final class MessageStore {
     enum MessagePartUpdateOutcome {
         case ignored

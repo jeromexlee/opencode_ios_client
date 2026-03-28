@@ -67,6 +67,7 @@ private enum ComposerMode: String {
     case shell
 }
 
+@MainActor
 struct ChatTabView: View {
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "OpenCodeClient",

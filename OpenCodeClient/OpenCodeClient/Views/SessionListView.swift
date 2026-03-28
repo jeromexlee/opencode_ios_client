@@ -5,6 +5,7 @@
 
 import SwiftUI
 
+@MainActor
 struct SessionListView: View {
     @Bindable var state: AppState
     @Environment(\.dismiss) private var dismiss

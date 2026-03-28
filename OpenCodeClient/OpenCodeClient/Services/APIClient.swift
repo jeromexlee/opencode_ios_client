@@ -678,6 +678,7 @@ protocol APIClientProtocol: Actor {
     func deleteSession(sessionID: String) async throws
     func messages(sessionID: String, limit: Int?) async throws -> [MessageWithParts]
     func promptAsync(sessionID: String, text: String, images: [ImageAttachment], agent: String, model: Message.ModelInfo?) async throws
+    func shell(sessionID: String, command: String, agent: String, model: Message.ModelInfo?) async throws -> MessageWithParts
     func abort(sessionID: String) async throws
     func sessionStatus() async throws -> [String: SessionStatus]
     func pendingPermissions() async throws -> [APIClient.PermissionRequest]

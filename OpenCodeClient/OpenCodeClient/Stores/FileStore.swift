@@ -7,6 +7,7 @@ import Foundation
 import Observation
 
 @Observable
+@MainActor
 final class FileStore {
     var sessionDiffs: [FileDiff] = []
     var selectedDiffFile: String?

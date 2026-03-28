@@ -8,6 +8,7 @@ import SwiftUI
 import UIKit
 #endif
 
+@MainActor
 struct ContentView: View {
     @State private var state: AppState
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -230,6 +231,7 @@ private struct FilePathWrapper: Identifiable {
     var id: String { path }
 }
 
+@MainActor
 private struct PreviewColumnView: View {
     @Bindable var state: AppState
     @State private var reloadToken = UUID()

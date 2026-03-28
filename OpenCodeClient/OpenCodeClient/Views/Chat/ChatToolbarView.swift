@@ -5,6 +5,7 @@
 
 import SwiftUI
 
+@MainActor
 struct ChatToolbarView: View {
     @Bindable var state: AppState
     @Binding var showSessionList: Bool

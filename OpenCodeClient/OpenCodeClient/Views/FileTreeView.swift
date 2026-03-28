@@ -5,6 +5,7 @@
 
 import SwiftUI
 
+@MainActor
 struct FileTreeView: View {
     @Bindable var state: AppState
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -100,6 +101,7 @@ struct TreeNodeItem {
     var path: String { node.path }
 }
 
+@MainActor
 struct DirectoryRow: View {
     @Bindable var state: AppState
     let node: FileNode

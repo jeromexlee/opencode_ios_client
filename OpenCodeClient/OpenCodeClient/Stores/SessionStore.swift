@@ -7,6 +7,7 @@ import Foundation
 import Observation
 
 @Observable
+@MainActor
 final class SessionStore {
     var sessions: [Session] = []
     var sessionStatuses: [String: SessionStatus] = [:]

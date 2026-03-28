@@ -17,6 +17,7 @@ enum ImageFileUtils {
     }
 }
 
+@MainActor
 struct FileContentView: View {
     @Bindable var state: AppState
     let filePath: String
