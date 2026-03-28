@@ -11,9 +11,9 @@ actor APIClient {
     private var password: String?
 
     // Default to localhost to avoid leaking a personal LAN IP in open source repos.
-    nonisolated(unsafe) static let defaultServer = APIConstants.defaultServer
+    nonisolated static let defaultServer = "127.0.0.1:4096"
 
-    init(baseURL: String = APIConstants.defaultServer, username: String? = nil, password: String? = nil) {
+    init(baseURL: String = APIClient.defaultServer, username: String? = nil, password: String? = nil) {
         self.baseURL = baseURL.hasPrefix("http") ? baseURL : "http://\(baseURL)"
         self.username = username
         self.password = password
@@ -445,6 +445,20 @@ actor APIClient {
         let (data, _) = try await makeRequest(path: "/file/status")
         return try JSONDecoder().decode([FileStatusEntry].self, from: data)
     }
+
+    func forkSession(sessionID: String, messageID: String? = nil) async throws -> Session {
+        struct ForkBody: Encodable {
+            let messageID: String?
+        }
+        let body = ForkBody(messageID: messageID)
+        let data = try JSONEncoder().encode(body)
+        let (responseData, _) = try await makeRequest(
+            path: "/session/\(sessionID)/fork",
+            method: "POST",
+            body: data
+        )
+        return try JSONDecoder().decode(Session.self, from: responseData)
+    }
 }
 
 struct FileNode: Codable, Identifiable {
@@ -652,3 +666,34 @@ enum APIError: Error {
     case invalidURL
     case httpError(statusCode: Int, data: Data)
 }
+
+protocol APIClientProtocol: Actor {
+    func configure(baseURL: String, username: String?, password: String?)
+    func health() async throws -> HealthResponse
+    func projects() async throws -> [Project]
+    func projectCurrent() async throws -> Project?
+    func sessions(directory: String?, limit: Int) async throws -> [Session]
+    func createSession(title: String?) async throws -> Session
+    func updateSession(sessionID: String, title: String) async throws -> Session
+    func deleteSession(sessionID: String) async throws
+    func messages(sessionID: String, limit: Int?) async throws -> [MessageWithParts]
+    func promptAsync(sessionID: String, text: String, images: [ImageAttachment], agent: String, model: Message.ModelInfo?) async throws
+    func abort(sessionID: String) async throws
+    func sessionStatus() async throws -> [String: SessionStatus]
+    func pendingPermissions() async throws -> [APIClient.PermissionRequest]
+    func respondPermission(sessionID: String, permissionID: String, response: APIClient.PermissionResponse) async throws
+    func pendingQuestions() async throws -> [QuestionRequest]
+    func replyQuestion(requestID: String, answers: [[String]]) async throws
+    func rejectQuestion(requestID: String) async throws
+    func providers() async throws -> ProvidersResponse
+    func agents() async throws -> [AgentInfo]
+    func sessionDiff(sessionID: String) async throws -> [FileDiff]
+    func sessionTodos(sessionID: String) async throws -> [TodoItem]
+    func fileList(path: String) async throws -> [FileNode]
+    func fileContent(path: String) async throws -> FileContent
+    func findFile(query: String, limit: Int) async throws -> [String]
+    func fileStatus() async throws -> [FileStatusEntry]
+    func forkSession(sessionID: String, messageID: String?) async throws -> Session
+}
+
+extension APIClient: APIClientProtocol {}

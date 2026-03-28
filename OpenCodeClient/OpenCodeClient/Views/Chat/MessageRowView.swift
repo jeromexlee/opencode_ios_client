@@ -16,11 +16,13 @@ private struct MessagePreviewImage: Identifiable {
 }
 
 struct MessageRowView: View {
+    @Bindable var state: AppState
     let message: MessageWithParts
     let sessionTodos: [TodoItem]
     let workspaceDirectory: String?
     let onOpenResolvedPath: (String) -> Void
     let onOpenFilesTab: () -> Void
+    let onForkFromMessage: ((String) -> Void)?
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selectedPreviewImage: MessagePreviewImage?
 
@@ -77,11 +79,29 @@ struct MessageRowView: View {
     @ViewBuilder
     private func markdownText(_ text: String) -> some View {
         if shouldRenderMarkdown(text) {
-            Markdown(text)
+            ResolvedMarkdownView(text: text, state: state, workspaceDirectory: workspaceDirectory)
                 .textSelection(.enabled)
         } else {
             Text(text)
                 .textSelection(.enabled)
+        }
+    }
+
+    private struct ResolvedMarkdownView: View {
+        let text: String
+        let state: AppState
+        let workspaceDirectory: String?
+        @State private var resolvedText: String?
+        
+        var body: some View {
+            Markdown(resolvedText ?? text)
+                .task {
+                    resolvedText = await MarkdownImageResolver.resolveImages(
+                        in: text,
+                        workspaceDirectory: workspaceDirectory,
+                        fetchContent: { path in try await state.loadFileContent(path: path) }
+                    )
+                }
         }
     }
 
@@ -178,12 +198,31 @@ struct MessageRowView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
 
-            if let model = message.info.resolvedModel {
-                Text("\(model.providerID)/\(model.modelID)")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 4)
+            HStack {
+                if let model = message.info.resolvedModel {
+                    Text("\(model.providerID)/\(model.modelID)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                if onForkFromMessage != nil {
+                    Menu {
+                        Button {
+                            onForkFromMessage?(message.info.id)
+                        } label: {
+                            Label("Fork from here", systemImage: "arrow.triangle.branch")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                    }
+                }
             }
+            .padding(.leading, 4)
         }
     }
 

@@ -30,6 +30,38 @@ private enum MessageGroupItem: Identifiable {
     }
 }
 
+enum ChatScrollBehavior {
+    static let followThreshold: CGFloat = 80
+
+    static func shouldAutoScroll(
+        bottomMarkerMinY: CGFloat,
+        viewportHeight: CGFloat,
+        threshold: CGFloat = followThreshold
+    ) -> Bool {
+        bottomMarkerMinY <= viewportHeight + threshold
+    }
+}
+
+enum SessionListEdgeSwipeBehavior {
+    static let edgeThreshold: CGFloat = 32
+    static let minimumHorizontalTranslation: CGFloat = 72
+    static let maximumVerticalTranslation: CGFloat = 56
+
+    static func shouldOpenSessionList(startLocation: CGPoint, translation: CGSize) -> Bool {
+        guard startLocation.x <= edgeThreshold else { return false }
+        guard translation.width >= minimumHorizontalTranslation else { return false }
+        return abs(translation.height) <= maximumVerticalTranslation
+    }
+}
+
+private struct BottomMarkerMinYPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = .greatestFiniteMagnitude
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 private enum ComposerMode: String {
     case chat
     case shell
@@ -66,6 +98,8 @@ struct ChatTabView: View {
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var composerMode: ComposerMode = .chat
     @State private var pendingScrollTask: Task<Void, Never>?
+    @State private var pendingBottomVisibilityTask: Task<Void, Never>?
+    @State private var isNearBottom = true
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var useGridCards: Bool { sizeClass == .regular }
@@ -308,118 +342,162 @@ struct ChatTabView: View {
                 )
 
                 ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            if showLoadMoreHint {
-                                HStack(spacing: 8) {
-                                    if state.isLoadingOlderMessagesInCurrentSession {
-                                        ProgressView()
-                                            .controlSize(.small)
+                    GeometryReader { scrollGeometry in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if showLoadMoreHint {
+                                    HStack(spacing: 8) {
+                                        if state.isLoadingOlderMessagesInCurrentSession {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        }
+                                        Text(
+                                            state.isLoadingOlderMessagesInCurrentSession
+                                                ? L10n.t(.chatLoadingMoreHistory)
+                                                : L10n.t(.chatPullToLoadMore)
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     }
-                                    Text(
-                                        state.isLoadingOlderMessagesInCurrentSession
-                                            ? L10n.t(.chatLoadingMoreHistory)
-                                            : L10n.t(.chatPullToLoadMore)
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .padding(.top, 2)
                                 }
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.top, 2)
-                            }
 
-                            if messageGroups.isEmpty {
-                                emptySessionStateView
-                            } else {
-                                ForEach(chatItems) { item in
-                                    switch item {
-                                    case .group(let group):
-                                        switch group {
-                                        case .user(let msg):
-                                            MessageRowView(
-                                                message: msg,
-                                                sessionTodos: state.sessionTodos[msg.info.sessionID] ?? [],
-                                                workspaceDirectory: state.currentSession?.directory,
-                                                onOpenResolvedPath: openFileInChat,
-                                                onOpenFilesTab: openFilesTab
-                                            )
-                                        case .assistantMerged(let msgs):
-                                            if let first = msgs.first {
-                                                let merged = MessageWithParts(info: first.info, parts: msgs.flatMap(\.parts))
+                                if messageGroups.isEmpty {
+                                    emptySessionStateView
+                                } else {
+                                    ForEach(chatItems) { item in
+                                        switch item {
+                                        case .group(let group):
+                                            switch group {
+                                            case .user(let msg):
                                                 MessageRowView(
-                                                    message: merged,
-                                                    sessionTodos: state.sessionTodos[merged.info.sessionID] ?? [],
+                                                    state: state,
+                                                    message: msg,
+                                                    sessionTodos: state.sessionTodos[msg.info.sessionID] ?? [],
                                                     workspaceDirectory: state.currentSession?.directory,
                                                     onOpenResolvedPath: openFileInChat,
-                                                    onOpenFilesTab: openFilesTab
+                                                    onOpenFilesTab: openFilesTab,
+                                                    onForkFromMessage: { messageID in
+                                                        Task { await state.forkSession(messageID: messageID) }
+                                                    }
                                                 )
+                                            case .assistantMerged(let msgs):
+                                                if let first = msgs.first {
+                                                    let merged = MessageWithParts(info: first.info, parts: msgs.flatMap(\.parts))
+                                                    MessageRowView(
+                                                        state: state,
+                                                        message: merged,
+                                                        sessionTodos: state.sessionTodos[merged.info.sessionID] ?? [],
+                                                        workspaceDirectory: state.currentSession?.directory,
+                                                        onOpenResolvedPath: openFileInChat,
+                                                        onOpenFilesTab: openFilesTab,
+                                                        onForkFromMessage: { messageID in
+                                                            Task { await state.forkSession(messageID: messageID) }
+                                                        }
+                                                    )
+                                                }
                                             }
+                                        case .activity(let a):
+                                            TurnActivityRowView(activity: a)
                                         }
-                                    case .activity(let a):
-                                        TurnActivityRowView(activity: a)
                                     }
                                 }
-                            }
-                            if let streamingPart = state.streamingReasoningPart {
-                                StreamingReasoningView(part: streamingPart, state: state)
-                                    .padding(.top, 6)
-                            }
+                                if let streamingPart = state.streamingReasoningPart {
+                                    StreamingReasoningView(part: streamingPart, state: state)
+                                        .padding(.top, 6)
+                                }
 
-                            // Question/permission cards should be at the bottom so auto-scroll makes them visible.
-                            // Keep them above the activity row.
-                            if useGridCards {
-                                LazyVGrid(
-                                    columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
-                                    alignment: .leading,
-                                    spacing: 10
-                                ) {
+                                if useGridCards {
+                                    LazyVGrid(
+                                        columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
+                                        alignment: .leading,
+                                        spacing: 10
+                                    ) {
+                                        ForEach(currentPermissions) { perm in
+                                            PermissionCardView(permission: perm) { response in
+                                                Task { await state.respondPermission(perm, response: response) }
+                                            }
+                                        }
+                                    }
+                                    ForEach(currentQuestions) { question in
+                                        QuestionCardView(
+                                            request: question,
+                                            onReply: { answers in
+                                                Task { await state.respondQuestion(question, answers: answers) }
+                                            },
+                                            onReject: {
+                                                Task { await state.rejectQuestion(question) }
+                                            }
+                                        )
+                                    }
+                                } else {
                                     ForEach(currentPermissions) { perm in
                                         PermissionCardView(permission: perm) { response in
                                             Task { await state.respondPermission(perm, response: response) }
                                         }
                                     }
-                                }
-                            } else {
-                                ForEach(currentPermissions) { perm in
-                                    PermissionCardView(permission: perm) { response in
-                                        Task { await state.respondPermission(perm, response: response) }
+                                    ForEach(currentQuestions) { question in
+                                        QuestionCardView(
+                                            request: question,
+                                            onReply: { answers in
+                                                Task { await state.respondQuestion(question, answers: answers) }
+                                            },
+                                            onReject: {
+                                                Task { await state.rejectQuestion(question) }
+                                            }
+                                        )
                                     }
                                 }
-                            }
 
-                            ForEach(currentQuestions) { question in
-                                QuestionCardView(
-                                    request: question,
-                                    onReply: { answers in
-                                        Task { await state.respondQuestion(question, answers: answers) }
-                                    },
-                                    onReject: {
-                                        Task { await state.rejectQuestion(question) }
-                                    }
-                                )
-                            }
+                                if let a = runningTurnActivity {
+                                    TurnActivityRowView(activity: a)
+                                }
 
-                            // Running activity should be at the very bottom.
-                            if let a = runningTurnActivity {
-                                TurnActivityRowView(activity: a)
+                                Color.clear
+                                    .frame(height: 1)
+                                    .id("bottom")
+                                    .background(
+                                        GeometryReader { bottomGeometry in
+                                            Color.clear.preference(
+                                                key: BottomMarkerMinYPreferenceKey.self,
+                                                value: bottomGeometry.frame(in: .named("chatScrollView")).minY
+                                            )
+                                        }
+                                    )
                             }
-
-                            Color.clear
-                                .frame(height: 1)
-                                .id("bottom")
+                            .padding()
                         }
-                        .padding()
-                    }
-                    .refreshable {
-                        await state.loadOlderMessagesForCurrentSession()
-                    }
-                    .scrollDismissesKeyboard(.immediately)
-                    .onChange(of: scrollAnchor) { _, _ in
-                        scheduleScrollToBottom(using: proxy)
-                    }
-                    .onDisappear {
-                        pendingScrollTask?.cancel()
-                        pendingScrollTask = nil
+                        .coordinateSpace(name: "chatScrollView")
+                        .refreshable {
+                            await state.loadOlderMessagesForCurrentSession()
+                        }
+                        .scrollDismissesKeyboard(.immediately)
+                        .onPreferenceChange(BottomMarkerMinYPreferenceKey.self) { bottomMarkerMinY in
+                            scheduleBottomVisibilityUpdate(
+                                bottomMarkerMinY: bottomMarkerMinY,
+                                viewportHeight: scrollGeometry.size.height
+                            )
+                        }
+                        .onChange(of: scrollAnchor) { _, _ in
+                            guard isNearBottom else { return }
+                            scheduleScrollToBottom(using: proxy)
+                        }
+                        .onDisappear {
+                            pendingScrollTask?.cancel()
+                            pendingScrollTask = nil
+                            pendingBottomVisibilityTask?.cancel()
+                            pendingBottomVisibilityTask = nil
+                        }
+                        .overlay(alignment: .leading) {
+                            if sizeClass != .regular {
+                                Color.clear
+                                    .frame(width: SessionListEdgeSwipeBehavior.edgeThreshold)
+                                    .contentShape(Rectangle())
+                                    .gesture(sessionListEdgeSwipeGesture)
+                                    .accessibilityHidden(true)
+                            }
+                        }
                     }
                 }
 
@@ -565,14 +643,6 @@ struct ChatTabView: View {
             }
             .navigationTitle(state.currentSession?.title ?? L10n.t(.appChat))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if state.isBusy {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    }
-                }
-            }
             .sheet(isPresented: $showSessionList) {
                 SessionListView(state: state)
             }
@@ -626,6 +696,9 @@ struct ChatTabView: View {
             .onChange(of: state.currentSessionID) { oldID, newID in
                 state.setDraftText(inputText, for: oldID)
                 syncDraftFromState(sessionID: newID)
+                isNearBottom = true
+                pendingBottomVisibilityTask?.cancel()
+                pendingBottomVisibilityTask = nil
             }
             .onChange(of: inputText) { _, newValue in
                 guard !isSyncingDraft else { return }
@@ -661,6 +734,18 @@ struct ChatTabView: View {
             } else {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
+        }
+    }
+
+    private func scheduleBottomVisibilityUpdate(bottomMarkerMinY: CGFloat, viewportHeight: CGFloat) {
+        pendingBottomVisibilityTask?.cancel()
+        pendingBottomVisibilityTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(75))
+            guard !Task.isCancelled else { return }
+            isNearBottom = ChatScrollBehavior.shouldAutoScroll(
+                bottomMarkerMinY: bottomMarkerMinY,
+                viewportHeight: viewportHeight
+            )
         }
     }
 
@@ -929,6 +1014,19 @@ struct ChatTabView: View {
 
     private func openFilesTab() {
         state.selectedTab = 1
+    }
+
+    private var sessionListEdgeSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 20, coordinateSpace: .local)
+            .onEnded { value in
+                guard sizeClass != .regular else { return }
+                guard !showSessionList else { return }
+                guard SessionListEdgeSwipeBehavior.shouldOpenSessionList(
+                    startLocation: value.startLocation,
+                    translation: value.translation
+                ) else { return }
+                showSessionList = true
+            }
     }
 }
 

@@ -1,6 +1,6 @@
-# RFC-001: OpenCode iOS Client 技术方案
+# RFC-002: OpenCode iOS Client 技术方案
 
-> Request for Comments · Draft · Feb 2026
+> Request for Comments · Working Draft · Mar 2026
 
 ## 元数据
 
@@ -8,8 +8,8 @@
 |------|------|
 | **RFC 编号** | RFC-002 |
 | **标题** | OpenCode iOS Client 技术方案 |
-| **状态** | Draft |
-| **创建日期** | 2026-02 |
+| **状态** | Working Draft |
+| **创建日期** | 2026-03 |
 | **PRD 引用** | [OpenCode_iOS_Client_PRD.md](OpenCode_iOS_Client_PRD.md) |
 | **API 参考** | [OpenCode_Web_API.md](OpenCode_Web_API.md) |
 
@@ -67,9 +67,9 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-- **Views**：SwiftUI 视图，按 Tab 与功能模块划分
+- **Views**：SwiftUI 视图，按 Chat / Files / Settings / Split View 模块划分
 - **State**：`@Observable` 管理连接、Session、消息、文件等
-- **Services**：网络层、认证、SSE 解析，与 UI 解耦
+- **Controllers / Services / Stores / Models / Utils**：事件控制、网络层、状态存储、数据模型与工具层解耦组织
 
 ### 2. 技术选型
 
@@ -339,8 +339,10 @@ var customProjectPath: String = ""        // "Custom path" 时用户输入的路
 - **布局**：OpenCode 风格，无左右气泡；人类消息灰色背景，AI 消息白/透明
 - **单位语义**：一个 message 可包含多个 part（tool/reasoning/text 等）。tool 调用计入 part，不单独计为 message
 - **Part 渲染**：text (Markdown)、reasoning (折叠)、tool (卡片)、patch (跳转 Files)。tool/patch 若含文件路径，点击可「在 File Tree 中打开」预览；其中 `todowrite` tool 需渲染为 Task List（todo）视图，并响应 SSE `todo.updated`。Todo 仅在 tool 卡片内展示，不在 Chat 顶部常驻（方案 B）
+- **图像类 tool output**：若 tool 结果关联到图像文件，优先渲染内联缩略图而不是 raw base64；点击后进入可缩放的全屏预览
 - **iPad 大屏密度**：在 `horizontalSizeClass == .regular` 时，tool/patch/permission 卡片可用三列网格横向填充；text part 仍整行显示（避免阅读断裂）
 - **流式（Think Streaming）**：`message.part.updated` 带 `delta` 时追加到对应 Part，实现打字机效果；无 delta 时全量 reload。Tool 卡片：running 展开、completed 默认收起
+- **自动滚动**：仅在用户当前位于底部附近时跟随新的 streaming 文本和卡片更新；用户主动向上浏览时停止自动跟随，避免抢走阅读位置
 - **Activity Row 收敛**：状态显示采用 "运行证据优先"。若检测到 running/pending tool 或 streaming 增量，即使瞬时收到 `session.status=idle` 也保持 running，避免提前 completed
 - **主题**：跟随 `@Environment(\.colorScheme)`，Light/Dark
 
@@ -369,12 +371,14 @@ var customProjectPath: String = ""        // "Custom path" 时用户输入的路
 - **Markdown 展示**：Preview 为主，可切换 Markdown 源码
 - **Diff 高亮**：优先在 Preview 内高亮 changes；若实现困难，则在 Markdown 内高亮
 - **入口**：Files Tab → 选文件 → 预览
+- **图片预览**：文件预览与 tool output 统一使用图像分支；初始为 fit-to-screen，支持 pinch、drag、double-tap zoom 和系统 share sheet
 
 ### 6. 权限与输入
 
 - **Session 列表**：列出 workspace 下所有已有 Session，作为连接与解析的验证手段
 - **Session 列表样式**：避免系统默认链接蓝；文本用中性色，当前 Session 用背景高亮
 - **权限**：`permission.asked` 时展示卡片，用户手动批准/拒绝，调用 `POST /session/:id/permissions/:permissionID`
+- **Question**：`question.asked` 时展示 question card；启动时通过 `GET /question` 补拉 pending questions；回答与拒绝分别调用 `/question/{id}/reply`、`/question/{id}/reject`
 - **输入**：支持多行，发送用 `prompt_async`；busy 时消息由服务端排队
 - **草稿**：按 sessionID 持久化未发送输入；切换 session 可恢复；发送成功后清空
 - **模型选择**：按 sessionID 记忆当前选择的模型；切换 Session 自动恢复（避免全局 model 覆盖）
@@ -383,10 +387,20 @@ var customProjectPath: String = ""        // "Custom path" 时用户输入的路
 - **Abort**：提供按钮调用 `POST /session/:id/abort`
 - **历史加载交互**：Chat 顶部显示“下拉加载更多历史消息”提示；加载中显示“正在加载更多历史消息...”，支持中英文本地化
 
+#### 6.1 Fork Session（会话分叉）
+
+用户消息底部 model label 旁的 "..." 菜单提供 "Fork from here" 选项。调用 `POST /session/{id}/fork`（body: `{ "messageID": "..." }`），服务端复制指定消息之前的全部历史到新 session 并返回。客户端收到新 `Session` 后插入列表顶部并切换。
+
+**实现要点**：
+- 使用 SwiftUI `Menu`（tap 触发，非 `.contextMenu` 长按），确保按钮可发现性
+- `MessageRowView` 新增 `onForkFromMessage: ((String) -> Void)?` 回调，将 `message.info.id` 传递给 `AppState.forkSession(messageID:)`
+- `AppState.forkSession()` 遵循 `createSession()` 模式：guard `isConnected` + `currentSessionID`，调 API，insert session，switch，load messages
+- Fork 后的 session 标题由服务端生成："{原标题} (fork #N)"
+
 ### 7. 文件与 Diff
 
 - **文件树**：`GET /file?path=` 递归展示；`GET /file/status` 获取 git 状态做颜色标记
-- **内容**：`GET /file/content?path=`；文本文件语法高亮，二进制显示类型提示
+- **内容**：`GET /file/content?path=`；文本文件显示等宽代码视图与行号；Markdown 使用 Preview / source 切换；图像文件支持交互式预览与系统分享
 - **Session Diff**：暂不在 iOS 客户端展示（server 端 diff API 在部分情况下返回空数组）
 
 ### 8. iPad / Vision Pro 布局（Phase 3）
@@ -407,6 +421,7 @@ var customProjectPath: String = ""        // "Custom path" 时用户输入的路
 - **展示**：Chat 顶部右侧（模型切换条与齿轮之间）显示环形进度（灰色空环表示无数据）。
 - **数据**：从最近一次 assistant message 的 `info.tokens`/`info.cost` 读取 token/cost；context limit 从 `GET /config/providers` 中 `limit.context` 获取。
 - **交互**：点击 ring 弹 sheet 展示 provider/model、context limit、total tokens、token breakdown（input/output/reasoning/cache read/cache write）与 total cost。
+- **常驻可见**：ring 在 idle、busy、streaming 等所有状态下始终显示。`ChatTabView` 不向 `.navigationBarTrailing` 注入 `ProgressView`；busy 状态已由输入栏红色停止按钮传达，toolbar spinner 已移除。
 
 ---
 

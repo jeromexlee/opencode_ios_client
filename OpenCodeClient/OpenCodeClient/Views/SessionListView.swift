@@ -16,7 +16,7 @@ struct SessionListView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if state.sessions.isEmpty {
+                if state.sidebarSessions.isEmpty {
                     ContentUnavailableView(
                         L10n.t(.sessionsEmptyTitle),
                         systemImage: "bubble.left.and.bubble.right",
@@ -25,7 +25,25 @@ struct SessionListView: View {
                 } else {
                     List {
                         sessionNodes(state.sessionTree)
+
+                        if state.isLoadingMoreSessions {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                Spacer()
+                            }
+                            .listRowSeparator(.hidden)
+                        } else if state.canLoadMoreSessions, let lastSessionID = state.sidebarSessions.last?.id {
+                            Color.clear
+                                .frame(height: 1)
+                                .listRowSeparator(.hidden)
+                                .onAppear {
+                                    Task { await state.loadMoreSessions() }
+                                }
+                                .id("load-more-\(lastSessionID)")
+                        }
                     }
+                    .accessibilityIdentifier("session-list")
                     .refreshable {
                         await state.refreshSessions()
                     }
@@ -108,20 +126,23 @@ struct SessionListView: View {
     private func sessionNodes(_ nodes: [SessionNode], depth: Int = 0) -> AnyView {
         AnyView(
             ForEach(nodes) { node in
+                let session = node.session
+                let status = state.sessionStatuses[session.id]
+
                 SessionRowView(
-                    session: node.session,
-                    status: state.sessionStatuses[node.session.id],
-                    isSelected: state.currentSessionID == node.session.id,
-                    isDeleting: deletingSessionID == node.session.id,
+                    session: session,
+                    status: status,
+                    isSelected: state.currentSessionID == session.id,
+                    isDeleting: deletingSessionID == session.id,
                     depth: depth,
                     hasChildren: !node.children.isEmpty,
-                    isCollapsed: !state.expandedSessionIDs.contains(node.session.id),
-                    onSelect: { selectSession(node.session) },
-                    onToggleCollapse: { state.toggleSessionExpanded(node.session.id) }
+                    isCollapsed: !state.expandedSessionIDs.contains(session.id),
+                    onSelect: { selectSession(session) },
+                    onToggleCollapse: { state.toggleSessionExpanded(session.id) }
                 )
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button {
-                        pendingDeleteSession = node.session
+                        pendingDeleteSession = session
                     } label: {
                         Label(L10n.t(.sessionsDelete), systemImage: "trash")
                     }
@@ -129,7 +150,7 @@ struct SessionListView: View {
                     .disabled(deletingSessionID != nil)
                 }
 
-                if state.expandedSessionIDs.contains(node.session.id) {
+                if state.expandedSessionIDs.contains(session.id) {
                     sessionNodes(node.children, depth: depth + 1)
                 }
             }
@@ -178,6 +199,7 @@ struct SessionRowView: View {
                 }
                 .buttonStyle(.plain)
                 .frame(width: 12)
+                .accessibilityIdentifier("session-toggle-\(session.id)")
             } else {
                 Color.clear
                     .frame(width: 12)
@@ -219,6 +241,8 @@ struct SessionRowView: View {
             onSelect()
         }
         .listRowBackground(isSelected ? Color.blue.opacity(0.08) : Color.clear)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("session-row-\(session.id)")
     }
 
     private func formattedDate(_ timestamp: Int) -> String {

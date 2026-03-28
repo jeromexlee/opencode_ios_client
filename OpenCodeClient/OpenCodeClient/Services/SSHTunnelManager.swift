@@ -277,34 +277,31 @@ final class SSHTunnelManager: ObservableObject {
         }
         conn.start(queue: queue)
 
-        Task.detached { [weak self] in
+        Task { [weak self] in
+            let snapshot = await self?.connectionSnapshot() ?? (localPort: 4096, remotePort: 18080)
+
             do {
-                let originator = try SocketAddress(ipAddress: "127.0.0.1", port: Int(self?.localPort.rawValue ?? 4096))
-                let targetPort = await MainActor.run { self?.config.remotePort ?? 18080 }
+                let originator = try SocketAddress(ipAddress: "127.0.0.1", port: snapshot.localPort)
 
                 let channel = try await sshClient.createDirectTCPIPChannel(
                     using: SSHChannelType.DirectTCPIP(
                         targetHost: "127.0.0.1",
-                        targetPort: targetPort,
+                        targetPort: snapshot.remotePort,
                         originatorAddress: originator
                     )
                 ) { channel in
                     channel.pipeline.addHandler(NIOToNWConnectionHandler(nwConnection: conn))
                 }
 
-                self?.startReceiveLoop(from: conn, to: channel)
+                Self.startReceiveLoop(from: conn, to: channel)
             } catch {
                 conn.cancel()
-                await MainActor.run {
-                    if self?.status == .connected {
-                        self?.status = .error(error.localizedDescription)
-                    }
-                }
+                await self?.setErrorIfStillConnected(error.localizedDescription)
             }
         }
     }
 
-    nonisolated private func startReceiveLoop(from conn: NWConnection, to channel: Channel) {
+    nonisolated private static func startReceiveLoop(from conn: NWConnection, to channel: Channel) {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { data, _, isComplete, error in
             if let data, !data.isEmpty {
                 channel.eventLoop.execute {
@@ -322,7 +319,7 @@ final class SSHTunnelManager: ObservableObject {
                 return
             }
 
-            self.startReceiveLoop(from: conn, to: channel)
+            Self.startReceiveLoop(from: conn, to: channel)
         }
     }
     
@@ -361,6 +358,16 @@ final class SSHTunnelManager: ObservableObject {
         SSHKnownHostStore.clear(host: config.host, port: config.port)
         trustedHostFingerprint = SSHKnownHostStore.fingerprint(host: config.host, port: config.port)
     }
+
+    private func connectionSnapshot() -> (localPort: Int, remotePort: Int) {
+        (Int(localPort.rawValue), config.remotePort)
+    }
+
+    private func setErrorIfStillConnected(_ description: String) {
+        if status == .connected {
+            status = .error(description)
+        }
+    }
 }
 
 private final class NIOToNWConnectionHandler: ChannelInboundHandler {
@@ -368,11 +375,11 @@ private final class NIOToNWConnectionHandler: ChannelInboundHandler {
 
     private let nwConnection: NWConnection
 
-    init(nwConnection: NWConnection) {
+    nonisolated init(nwConnection: NWConnection) {
         self.nwConnection = nwConnection
     }
 
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    nonisolated func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         var buffer = unwrapInboundIn(data)
         let bytes = buffer.readBytes(length: buffer.readableBytes) ?? []
         guard !bytes.isEmpty else { return }
@@ -389,7 +396,7 @@ private final class NIOToNWConnectionHandler: ChannelInboundHandler {
         })
     }
 
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
+    nonisolated func errorCaught(context: ChannelHandlerContext, error: Error) {
         #if DEBUG
         print("[SSH Tunnel] channel error: \(error)")
         #endif

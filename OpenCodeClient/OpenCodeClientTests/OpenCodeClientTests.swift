@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 import Testing
 @testable import OpenCodeClient
 
@@ -359,6 +360,34 @@ struct OpenCodeClientTests {
         let data = partJson.data(using: .utf8)!
         let part = try JSONDecoder().decode(Part.self, from: data)
         #expect(part.filePathsForNavigation.contains("research/deepseek-news-2026-02.md"))
+    }
+
+    @Test func testImageExtensionDetection() {
+        #expect(ImageFileUtils.isImage("image.png") == true)
+        #expect(ImageFileUtils.isImage("photo.jpg") == true)
+        #expect(ImageFileUtils.isImage("photo.jpeg") == true)
+        #expect(ImageFileUtils.isImage("animation.gif") == true)
+        #expect(ImageFileUtils.isImage("asset.webp") == true)
+        #expect(ImageFileUtils.isImage("capture.heic") == true)
+
+        #expect(ImageFileUtils.isImage("file.swift") == false)
+        #expect(ImageFileUtils.isImage("README.md") == false)
+        #expect(ImageFileUtils.isImage("notes.txt") == false)
+        #expect(ImageFileUtils.isImage("payload.json") == false)
+
+        #expect(ImageFileUtils.isImage("ICON.PNG") == true)
+        #expect(ImageFileUtils.isImage("photo.Jpg") == true)
+        #expect(ImageFileUtils.isImage("archive.tar.gz") == false)
+        #expect(ImageFileUtils.isImage("photo.edit.png") == true)
+    }
+
+    @Test func testBase64ImageDecoding() {
+        let base64PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5WZfQAAAAASUVORK5CYII="
+        let data = Data(base64Encoded: base64PNG)
+        #expect(data != nil)
+        if let data {
+            #expect(UIImage(data: data) != nil)
+        }
     }
 }
 
@@ -1077,6 +1106,69 @@ struct MessageRenderingHeuristicTests {
     }
 }
 
+struct ChatScrollBehaviorTests {
+
+    @Test func shouldAutoScrollWhenBottomMarkerIsVisible() {
+        #expect(
+            ChatScrollBehavior.shouldAutoScroll(
+                bottomMarkerMinY: 640,
+                viewportHeight: 600,
+                threshold: 80
+            ) == true
+        )
+    }
+
+    @Test func shouldAutoScrollWhenBottomMarkerIsNearViewportBottom() {
+        #expect(
+            ChatScrollBehavior.shouldAutoScroll(
+                bottomMarkerMinY: 675,
+                viewportHeight: 600,
+                threshold: 80
+            ) == true
+        )
+    }
+
+    @Test func shouldNotAutoScrollWhenUserHasScrolledAwayFromBottom() {
+        #expect(
+            ChatScrollBehavior.shouldAutoScroll(
+                bottomMarkerMinY: 760,
+                viewportHeight: 600,
+                threshold: 80
+            ) == false
+        )
+    }
+}
+
+struct SessionListEdgeSwipeBehaviorTests {
+
+    @Test func opensForLeftEdgeSwipeWithStrongHorizontalTravel() {
+        #expect(
+            SessionListEdgeSwipeBehavior.shouldOpenSessionList(
+                startLocation: CGPoint(x: 12, y: 180),
+                translation: CGSize(width: 120, height: 18)
+            ) == true
+        )
+    }
+
+    @Test func ignoresSwipeThatStartsAwayFromLeftEdge() {
+        #expect(
+            SessionListEdgeSwipeBehavior.shouldOpenSessionList(
+                startLocation: CGPoint(x: 60, y: 180),
+                translation: CGSize(width: 120, height: 12)
+            ) == false
+        )
+    }
+
+    @Test func ignoresMostlyVerticalDrag() {
+        #expect(
+            SessionListEdgeSwipeBehavior.shouldOpenSessionList(
+                startLocation: CGPoint(x: 8, y: 180),
+                translation: CGSize(width: 110, height: 90)
+            ) == false
+        )
+    }
+}
+
 // MARK: - SSH Tunnel Tests
 
 struct SSHTunnelTests {
@@ -1693,6 +1785,100 @@ struct ProjectSelectionTests {
     }
 }
 
+// MARK: - Fork Session Tests
+
+struct ForkSessionTests {
+
+    private static func makeSession(id: String, parentID: String? = nil, updated: Int = 1) -> Session {
+        Session(
+            id: id,
+            slug: id,
+            projectID: "p1",
+            directory: "/tmp",
+            parentID: parentID,
+            title: id,
+            version: "1",
+            time: .init(created: 0, updated: updated, archived: nil),
+            share: nil,
+            summary: nil
+        )
+    }
+
+    @Test @MainActor func forkSessionCallsAPIAndSwitchesToNewSession() async {
+        let apiClient = MockAPIClient()
+        let forked = Self.makeSession(id: "forked-s1", parentID: "s1", updated: 99)
+        await apiClient.setForkSessionResult(forked)
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+        state.sessions = [Self.makeSession(id: "s1", updated: 10)]
+        state.currentSessionID = "s1"
+
+        await state.forkSession(messageID: "msg-42")
+
+        let calls = await apiClient.forkSessionCalls
+        #expect(calls.count == 1)
+        #expect(calls[0].0 == "s1")
+        #expect(calls[0].1 == "msg-42")
+        #expect(state.sessions.first?.id == "forked-s1")
+        #expect(state.currentSessionID == "forked-s1")
+    }
+
+    @Test @MainActor func forkSessionWithNilMessageIDCallsAPIWithNil() async {
+        let apiClient = MockAPIClient()
+        let forked = Self.makeSession(id: "forked-s2", parentID: "s2", updated: 50)
+        await apiClient.setForkSessionResult(forked)
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+        state.sessions = [Self.makeSession(id: "s2", updated: 5)]
+        state.currentSessionID = "s2"
+
+        await state.forkSession(messageID: nil)
+
+        let calls = await apiClient.forkSessionCalls
+        #expect(calls.count == 1)
+        #expect(calls[0].1 == nil)
+        #expect(state.currentSessionID == "forked-s2")
+    }
+
+    @Test @MainActor func forkSessionDoesNothingWhenNotConnected() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = false
+        state.currentSessionID = "s1"
+
+        await state.forkSession(messageID: "msg-1")
+
+        let calls = await apiClient.forkSessionCalls
+        #expect(calls.isEmpty)
+    }
+
+    @Test @MainActor func forkSessionDoesNothingWhenNoCurrentSession() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+        state.currentSessionID = nil
+
+        await state.forkSession(messageID: "msg-1")
+
+        let calls = await apiClient.forkSessionCalls
+        #expect(calls.isEmpty)
+    }
+
+    @Test @MainActor func forkSessionSetsConnectionErrorOnFailure() async {
+        let apiClient = MockAPIClient()
+        await apiClient.setForkSessionError(APIError.httpError(statusCode: 500, data: Data()))
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+        state.sessions = [Self.makeSession(id: "s1", updated: 1)]
+        state.currentSessionID = "s1"
+
+        await state.forkSession(messageID: "msg-1")
+
+        #expect(state.currentSessionID == "s1")
+        #expect(state.connectionError != nil)
+    }
+}
+
 // MARK: - Session Tree Tests
 
 struct SessionTreeTests {
@@ -1775,6 +1961,52 @@ struct SessionTreeTests {
         let tree = AppState.buildSessionTree(from: filtered)
         #expect(tree.count == 1)
         #expect(tree[0].session.id == "active")
+    }
+
+    @Test @MainActor func sidebarSessionsHideChildrenAndSortRootsByUpdatedDesc() {
+        let state = AppState()
+        state.sessions = [
+            makeSession(id: "root-old", updated: 50),
+            makeSession(id: "child", parentID: "root-new", updated: 120),
+            makeSession(id: "root-new", updated: 100),
+        ]
+
+        #expect(state.sidebarSessions.map(\.id) == ["root-new", "root-old"])
+    }
+
+    @Test @MainActor func sessionTreeRemainsCanonicalListWhenSidebarSessionsHideChildren() {
+        let state = AppState()
+        state.showArchivedSessions = false
+        state.sessions = [
+            makeSession(id: "root", updated: 100),
+            makeSession(id: "child", parentID: "root", updated: 90),
+            makeSession(id: "grandchild", parentID: "child", updated: 80),
+            makeSession(id: "other-root", updated: 70),
+        ]
+
+        #expect(state.sidebarSessions.map(\.id) == ["root", "other-root"])
+        #expect(state.sessionTree.count == 2)
+        #expect(state.sessionTree[0].session.id == "root")
+        #expect(state.sessionTree[0].children.count == 1)
+        #expect(state.sessionTree[0].children[0].session.id == "child")
+        #expect(state.sessionTree[0].children[0].children.count == 1)
+        #expect(state.sessionTree[0].children[0].children[0].session.id == "grandchild")
+    }
+
+    @Test @MainActor func archivedFilteringMatchesBetweenSidebarSessionsAndSessionTree() {
+        let state = AppState()
+        state.showArchivedSessions = false
+        state.sessions = [
+            makeSession(id: "active-root", updated: 100),
+            makeSession(id: "active-child", parentID: "active-root", updated: 90),
+            makeSession(id: "archived-root", updated: 80, archived: 1_000),
+            makeSession(id: "archived-child", parentID: "active-root", updated: 70, archived: 2_000),
+        ]
+
+        #expect(state.sidebarSessions.map(\.id) == ["active-root"])
+        #expect(state.sessionTree.count == 1)
+        #expect(state.sessionTree[0].session.id == "active-root")
+        #expect(state.sessionTree[0].children.map(\.session.id) == ["active-child"])
     }
 
     @Test @MainActor func toggleSessionExpandedAddsAndRemovesSessionID() {
@@ -1946,5 +2178,595 @@ struct QuestionSSEEventTests {
         #expect(event.payload.type == "question.rejected")
         let props = event.payload.properties ?? [:]
         #expect((props["requestID"]?.value as? String) == "question_1")
+    }
+}
+
+actor MockAPIClient: APIClientProtocol {
+    var configuredBaseURL: String?
+    var configuredUsername: String?
+    var configuredPassword: String?
+
+    var healthResult = HealthResponse(healthy: true, version: "test-version")
+    var healthError: Error?
+    var sessionsResult: [Session] = []
+    var sessionsByLimit: [Int: [Session]] = [:]
+    var sessionLimitRequests: [Int] = []
+    var createSessionResult = Session(
+        id: "created-session",
+        slug: "created-session",
+        projectID: "p1",
+        directory: "/tmp",
+        parentID: nil,
+        title: "Created",
+        version: "1",
+        time: .init(created: 1, updated: 1, archived: nil),
+        share: nil,
+        summary: nil
+    )
+    var forkSessionResult = Session(
+        id: "forked-session",
+        slug: "forked-session",
+        projectID: "p1",
+        directory: "/tmp",
+        parentID: "original-session",
+        title: "Original (fork #1)",
+        version: "1",
+        time: .init(created: 2, updated: 2, archived: nil),
+        share: nil,
+        summary: nil
+    )
+    var forkSessionError: Error?
+    var forkSessionCalls: [(String, String?)] = []
+    var messagesResult: [MessageWithParts] = []
+    var messagesCallCount = 0
+    var promptError: Error?
+    var deletedSessionIDs: [String] = []
+    var updateSessionCalls: [(String, String)] = []
+    var sessionDiffResult: [FileDiff] = []
+    var sessionDiffCallCount = 0
+
+    func setHealthError(_ error: Error?) {
+        healthError = error
+    }
+
+    func setSessionsResult(_ sessions: [Session]) {
+        sessionsResult = sessions
+    }
+
+    func setSessionsResult(_ sessions: [Session], forLimit limit: Int) {
+        sessionsByLimit[limit] = sessions
+    }
+
+    func setCreateSessionResult(_ session: Session) {
+        createSessionResult = session
+    }
+
+    func setMessagesResult(_ messages: [MessageWithParts]) {
+        messagesResult = messages
+    }
+
+    func setSessionDiffResult(_ diffs: [FileDiff]) {
+        sessionDiffResult = diffs
+    }
+
+    func setPromptError(_ error: Error?) {
+        promptError = error
+    }
+
+    func setForkSessionResult(_ session: Session) {
+        forkSessionResult = session
+    }
+
+    func setForkSessionError(_ error: Error?) {
+        forkSessionError = error
+    }
+
+    func configure(baseURL: String, username: String?, password: String?) {
+        configuredBaseURL = baseURL
+        configuredUsername = username
+        configuredPassword = password
+    }
+
+    func health() async throws -> HealthResponse {
+        if let healthError { throw healthError }
+        return healthResult
+    }
+
+    func projects() async throws -> [Project] { [] }
+    func projectCurrent() async throws -> Project? { nil }
+    func sessions(directory: String?, limit: Int) async throws -> [Session] {
+        sessionLimitRequests.append(limit)
+        return sessionsByLimit[limit] ?? sessionsResult
+    }
+    func createSession(title: String?) async throws -> Session { createSessionResult }
+
+    func updateSession(sessionID: String, title: String) async throws -> Session {
+        updateSessionCalls.append((sessionID, title))
+        return Session(
+            id: sessionID,
+            slug: sessionID,
+            projectID: "p1",
+            directory: "/tmp",
+            parentID: nil,
+            title: title,
+            version: "1",
+            time: .init(created: 1, updated: 1, archived: nil),
+            share: nil,
+            summary: nil
+        )
+    }
+
+    func deleteSession(sessionID: String) async throws {
+        deletedSessionIDs.append(sessionID)
+    }
+
+    func messages(sessionID: String, limit: Int?) async throws -> [MessageWithParts] {
+        messagesCallCount += 1
+        return messagesResult
+    }
+
+    func promptAsync(sessionID: String, text: String, agent: String, model: Message.ModelInfo?) async throws {
+        if let promptError { throw promptError }
+    }
+
+    func abort(sessionID: String) async throws {}
+    func sessionStatus() async throws -> [String: SessionStatus] { [:] }
+    func pendingPermissions() async throws -> [APIClient.PermissionRequest] { [] }
+    func respondPermission(sessionID: String, permissionID: String, response: APIClient.PermissionResponse) async throws {}
+    func pendingQuestions() async throws -> [QuestionRequest] { [] }
+    func replyQuestion(requestID: String, answers: [[String]]) async throws {}
+    func rejectQuestion(requestID: String) async throws {}
+    func providers() async throws -> ProvidersResponse {
+        try JSONDecoder().decode(ProvidersResponse.self, from: Data("{\"providers\":[]}".utf8))
+    }
+    func agents() async throws -> [AgentInfo] { [] }
+    func sessionDiff(sessionID: String) async throws -> [FileDiff] {
+        sessionDiffCallCount += 1
+        return sessionDiffResult
+    }
+    func sessionTodos(sessionID: String) async throws -> [TodoItem] { [] }
+    func fileList(path: String) async throws -> [FileNode] { [] }
+    func fileContent(path: String) async throws -> FileContent { FileContent(type: "text", content: "") }
+    func findFile(query: String, limit: Int) async throws -> [String] { [] }
+    func fileStatus() async throws -> [FileStatusEntry] { [] }
+    func forkSession(sessionID: String, messageID: String?) async throws -> Session {
+        forkSessionCalls.append((sessionID, messageID))
+        if let forkSessionError { throw forkSessionError }
+        return forkSessionResult
+    }
+}
+
+actor MockSSEClient: SSEClientProtocol {
+    var stream = AsyncThrowingStream<SSEEvent, Error> { continuation in
+        continuation.finish()
+    }
+
+    func connect(baseURL: String, username: String?, password: String?) -> AsyncThrowingStream<SSEEvent, Error> {
+        stream
+    }
+}
+
+struct AppStateFlowTests {
+    @Test @MainActor func testConnectionConfiguresInjectedClient() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.configure(serverURL: "https://example.com:4096", username: "alice", password: "secret")
+
+        await state.testConnection()
+
+        #expect(state.isConnected == true)
+        #expect(state.serverVersion == "test-version")
+        #expect(await apiClient.configuredBaseURL == "https://example.com:4096")
+        #expect(await apiClient.configuredUsername == "alice")
+        #expect(await apiClient.configuredPassword == "secret")
+    }
+
+    @Test @MainActor func testConnectionReportsHealthFailure() async {
+        let apiClient = MockAPIClient()
+        await apiClient.setHealthError(APIError.invalidURL)
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.configure(serverURL: "127.0.0.1:4096")
+
+        await state.testConnection()
+
+        #expect(state.isConnected == false)
+        #expect(state.connectionError?.isEmpty == false)
+    }
+
+    @Test @MainActor func loadSessionsSelectsFirstSessionWhenNeeded() async {
+        let apiClient = MockAPIClient()
+        await apiClient.setSessionsResult([
+            Self.makeSession(id: "s-new", updated: 20),
+            Self.makeSession(id: "s-old", updated: 10),
+        ])
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+        state.currentSessionID = nil
+
+        await state.loadSessions()
+
+        #expect(state.sessions.count == 2)
+        #expect(state.currentSessionID == "s-new")
+    }
+
+    @Test @MainActor func loadMoreSessionsRequestsLargerLimitAndKeepsOnlyRootSidebarSessions() async {
+        let apiClient = MockAPIClient()
+        let firstPageChildren = (0..<99).map { index in
+            Self.makeSession(id: "child-\(index)", parentID: "root-1", updated: 99 - index)
+        }
+        let secondPageChildren = (0..<99).map { index in
+            Self.makeSession(id: "child-\(index)", parentID: "root-1", updated: 99 - index)
+        }
+
+        await apiClient.setSessionsResult([
+            Self.makeSession(id: "root-1", updated: 100),
+        ] + firstPageChildren, forLimit: 100)
+        await apiClient.setSessionsResult([
+            Self.makeSession(id: "root-2", updated: 110),
+            Self.makeSession(id: "root-1", updated: 100),
+        ] + secondPageChildren, forLimit: 200)
+
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+
+        await state.loadSessions()
+        #expect(state.sidebarSessions.map(\.id) == ["root-1"])
+        #expect(state.canLoadMoreSessions == true)
+
+        await state.loadMoreSessions()
+
+        #expect(await apiClient.sessionLimitRequests == [100, 200])
+        #expect(state.sidebarSessions.map(\.id) == ["root-2", "root-1"])
+        #expect(state.canLoadMoreSessions == false)
+    }
+
+    @Test @MainActor func loadMoreSessionsPreservesChildHierarchyInCanonicalSessionTree() async {
+        let apiClient = MockAPIClient()
+        let fillerChildren = (0..<97).map { index in
+            Self.makeSession(
+                id: "child-extra-\(index)",
+                parentID: "root-1",
+                updated: 89 - index
+            )
+        }
+        await apiClient.setSessionsResult([
+            Self.makeSession(id: "root-1", updated: 100),
+            Self.makeSession(id: "child-1", parentID: "root-1", updated: 95),
+            Self.makeSession(id: "grandchild-1", parentID: "child-1", updated: 90),
+        ] + fillerChildren, forLimit: 100)
+        await apiClient.setSessionsResult([
+            Self.makeSession(id: "root-2", updated: 110),
+            Self.makeSession(id: "root-1", updated: 100),
+            Self.makeSession(id: "child-1", parentID: "root-1", updated: 95),
+            Self.makeSession(id: "grandchild-1", parentID: "child-1", updated: 90),
+        ] + fillerChildren, forLimit: 200)
+
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+        state.showArchivedSessions = false
+
+        await state.loadSessions()
+        #expect(state.sessionTree.map(\.session.id) == ["root-1"])
+        #expect(state.sessionTree[0].children.first?.session.id == "child-1")
+        let initialChildOneNode = state.sessionTree[0].children.first(where: { $0.session.id == "child-1" })
+        #expect(initialChildOneNode?.children.map(\.session.id) == ["grandchild-1"])
+        #expect(state.canLoadMoreSessions == true)
+
+        await state.loadMoreSessions()
+
+        #expect(state.sidebarSessions.map(\.id) == ["root-2", "root-1"])
+        #expect(state.sessionTree.map(\.session.id) == ["root-2", "root-1"])
+        let rootOneNode = state.sessionTree.first(where: { $0.session.id == "root-1" })
+        #expect(rootOneNode?.children.first?.session.id == "child-1")
+        let reloadedChildOneNode = rootOneNode?.children.first(where: { $0.session.id == "child-1" })
+        #expect(reloadedChildOneNode?.children.map(\.session.id) == ["grandchild-1"])
+    }
+
+    @Test @MainActor func createSessionAppendsNewCurrentSession() async {
+        let apiClient = MockAPIClient()
+        await apiClient.setCreateSessionResult(Self.makeSession(id: "created", updated: 30))
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+        state.sessions = [Self.makeSession(id: "existing", updated: 10)]
+        state.messages = [Self.makeMessageRow(messageID: "m1", sessionID: "existing", text: "old")]
+        state.partsByMessage = ["m1": Self.makeMessageRow(messageID: "m1", sessionID: "existing", text: "old").parts]
+
+        await state.createSession()
+
+        #expect(state.currentSessionID == "created")
+        #expect(state.sessions.first?.id == "created")
+        #expect(state.messages.isEmpty)
+        #expect(state.partsByMessage.isEmpty)
+    }
+
+    @Test @MainActor func sendMessageRollsBackOptimisticMessageOnFailure() async {
+        let apiClient = MockAPIClient()
+        await apiClient.setPromptError(APIError.invalidURL)
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.currentSessionID = "s1"
+
+        let succeeded = await state.sendMessage("hello")
+
+        #expect(succeeded == false)
+        #expect(state.messages.isEmpty)
+        #expect(state.sendError?.isEmpty == false)
+    }
+
+    @Test @MainActor func loadMessagesStoresFetchedRowsAndParts() async {
+        let apiClient = MockAPIClient()
+        let loaded = [Self.makeMessageRow(messageID: "m1", sessionID: "s1", text: "hi")]
+        await apiClient.setMessagesResult(loaded)
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.currentSessionID = "s1"
+
+        await state.loadMessages()
+
+        #expect(state.messages.count == 1)
+        #expect(state.partsByMessage["m1"]?.count == 1)
+        #expect(state.partsByMessage["m1"]?.first?.text == "hi")
+    }
+
+    @Test @MainActor func loadMessagesDedupesOptimisticUserRowWhenPersistedTextNormalizesWhitespace() async {
+        let apiClient = MockAPIClient()
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        await apiClient.setMessagesResult([
+            Self.makeMessageRow(
+                messageID: "m-user",
+                sessionID: "s1",
+                role: "user",
+                text: "hello world",
+                created: now,
+                completed: now
+            ),
+            Self.makeMessageRow(messageID: "m-assistant", sessionID: "s1", text: "reply")
+        ])
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.currentSessionID = "s1"
+        state.sessionStatuses["s1"] = SessionStatus(type: "busy", attempt: nil, message: nil, next: nil)
+
+        let tempMessageID = state.appendOptimisticUserMessage("hello\n\nworld")
+        await state.loadMessages()
+
+        #expect(state.messages.map(\.info.id) == ["m-user", "m-assistant"])
+        #expect(state.messages.contains(where: { $0.info.id == tempMessageID }) == false)
+        #expect(state.partsByMessage[tempMessageID] == nil)
+    }
+
+    @Test @MainActor func messageUpdatedIgnoresOtherSession() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.currentSessionID = "s1"
+        state.streamingPartTexts = ["m1:p1": "partial"]
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"message.updated","properties":{"sessionID":"s2","messageID":"m2"}}}
+        """))
+
+        #expect(state.streamingPartTexts["m1:p1"] == "partial")
+        #expect(await apiClient.messagesCallCount == 0)
+        #expect(await apiClient.sessionDiffCallCount == 0)
+    }
+
+    @Test @MainActor func messageUpdatedForCurrentSessionClearsStreamingAndReloads() async {
+        let apiClient = MockAPIClient()
+        await apiClient.setMessagesResult([Self.makeMessageRow(messageID: "m1", sessionID: "s1", text: "Final")])
+        await apiClient.setSessionDiffResult([Self.makeDiff(file: "Sources/MessageStore.swift")])
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.currentSessionID = "s1"
+        state.streamingPartTexts = ["m1:p1": "partial"]
+        state.streamingReasoningPart = Self.makeReasoningPart(messageID: "m1", partID: "p-reasoning", sessionID: "s1")
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"message.updated","properties":{"sessionID":"s1","messageID":"m1"}}}
+        """))
+
+        #expect(state.streamingPartTexts.isEmpty)
+        #expect(state.streamingReasoningPart == nil)
+        #expect(state.messages.count == 1)
+        #expect(state.messages.first?.parts.first?.text == "Final")
+        #expect(state.sessionDiffs == [Self.makeDiff(file: "Sources/MessageStore.swift")])
+        #expect(await apiClient.messagesCallCount == 1)
+        #expect(await apiClient.sessionDiffCallCount == 1)
+    }
+
+    @Test @MainActor func sessionUpdatedSkipsProjectMismatchForNonCurrentSession() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.selectedProjectWorktree = "/project/a"
+        state.currentSessionID = "s-current"
+        state.sessions = [Self.makeSession(id: "s-current", updated: 10, directory: "/project/a", title: "Current")]
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"session.updated","properties":{"session":{"id":"s-other","slug":"s-other","projectID":"p1","directory":"/project/b","parentID":null,"title":"Other","version":"1","time":{"created":0,"updated":20},"share":null,"summary":null}}}}
+        """))
+
+        #expect(state.sessions.count == 1)
+        #expect(state.sessions.first?.id == "s-current")
+        #expect(state.sessions.first?.title == "Current")
+    }
+
+    @Test @MainActor func sessionUpdatedStillAppliesToCurrentSessionAcrossProjectMismatch() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.selectedProjectWorktree = "/project/a"
+        state.currentSessionID = "s-current"
+        state.sessions = [Self.makeSession(id: "s-current", updated: 10, directory: "/project/a", title: "Old Title")]
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"session.updated","properties":{"session":{"id":"s-current","slug":"s-current","projectID":"p1","directory":"/project/b","parentID":null,"title":"New Title","version":"1","time":{"created":0,"updated":30},"share":null,"summary":null}}}}
+        """))
+
+        #expect(state.sessions.count == 1)
+        #expect(state.sessions.first?.id == "s-current")
+        #expect(state.sessions.first?.title == "New Title")
+        #expect(state.sessions.first?.directory == "/project/b")
+    }
+
+    @Test @MainActor func messagePartUpdatedAccumulatesStreamingMessageText() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.currentSessionID = "s1"
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"message.part.updated","properties":{"sessionID":"s1","delta":"Hello","part":{"id":"p1","messageID":"m1","sessionID":"s1","type":"text"}}}}
+        """))
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"message.part.updated","properties":{"sessionID":"s1","delta":" world","part":{"id":"p1","messageID":"m1","sessionID":"s1","type":"text"}}}}
+        """))
+
+        #expect(state.streamingPartTexts["m1:p1"] == "Hello world")
+        #expect(state.messages.count == 1)
+        #expect(state.messages.first?.info.id == "m1")
+        #expect(state.messages.first?.parts.first?.text == "Hello world")
+        #expect(state.partsByMessage["m1"]?.first?.text == "Hello world")
+    }
+
+    @Test @MainActor func messagePartUpdatedWithoutDeltaReloadsAndClearsStreamingState() async {
+        let apiClient = MockAPIClient()
+        await apiClient.setMessagesResult([Self.makeMessageRow(messageID: "m1", sessionID: "s1", text: "Final")])
+        await apiClient.setSessionDiffResult([Self.makeDiff(file: "Sources/AppState.swift")])
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.currentSessionID = "s1"
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"message.part.updated","properties":{"sessionID":"s1","delta":"Draft","part":{"id":"p1","messageID":"m1","sessionID":"s1","type":"text"}}}}
+        """))
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"message.part.updated","properties":{"sessionID":"s1","part":{"id":"p1","messageID":"m1","sessionID":"s1","type":"text"}}}}
+        """))
+
+        #expect(state.streamingPartTexts["m1:p1"] == nil)
+        #expect(state.messages.count == 1)
+        #expect(state.messages.first?.parts.first?.text == "Final")
+        #expect(state.sessionDiffs == [Self.makeDiff(file: "Sources/AppState.swift")])
+        #expect(await apiClient.messagesCallCount == 1)
+        #expect(await apiClient.sessionDiffCallCount == 1)
+    }
+
+    @Test @MainActor func messagePartUpdatedIgnoresNonCurrentSession() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.currentSessionID = "s1"
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"message.part.updated","properties":{"sessionID":"s2","delta":"ignored","part":{"id":"p1","messageID":"m2","sessionID":"s2","type":"text"}}}}
+        """))
+
+        #expect(state.streamingPartTexts.isEmpty)
+        #expect(state.messages.isEmpty)
+        #expect(await apiClient.messagesCallCount == 0)
+        #expect(await apiClient.sessionDiffCallCount == 0)
+    }
+
+    @Test @MainActor func sessionStatusIdleClearsStreamingStateForCurrentSession() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.currentSessionID = "s1"
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"message.part.updated","properties":{"sessionID":"s1","delta":"thinking","part":{"id":"p-reasoning","messageID":"m1","sessionID":"s1","type":"reasoning"}}}}
+        """))
+        #expect(state.streamingReasoningPart?.messageID == "m1")
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"session.status","properties":{"sessionID":"s1","status":{"type":"idle","attempt":null,"message":null,"next":null}}}}
+        """))
+
+        #expect(state.sessionStatuses["s1"]?.type == "idle")
+        #expect(state.streamingReasoningPart == nil)
+        #expect(state.streamingPartTexts.isEmpty)
+    }
+
+    @Test @MainActor func deleteCurrentSessionSelectsNextMostRecentSession() async throws {
+        let apiClient = MockAPIClient()
+        await apiClient.setMessagesResult([Self.makeMessageRow(messageID: "m-next", sessionID: "next", text: "next")])
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.sessions = [
+            Self.makeSession(id: "current", updated: 10),
+            Self.makeSession(id: "next", updated: 20),
+        ]
+        state.currentSessionID = "current"
+
+        try await state.deleteSession(sessionID: "current")
+
+        #expect(state.currentSessionID == "next")
+        #expect(state.sessions.count == 1)
+        #expect(state.sessions.first?.id == "next")
+        #expect(await apiClient.deletedSessionIDs == ["current"])
+    }
+
+    private static func makeSession(id: String, parentID: String? = nil, updated: Int, directory: String = "/tmp", title: String? = nil) -> Session {
+        Session(
+            id: id,
+            slug: id,
+            projectID: "p1",
+            directory: directory,
+            parentID: parentID,
+            title: title ?? id,
+            version: "1",
+            time: .init(created: 0, updated: updated, archived: nil),
+            share: nil,
+            summary: nil
+        )
+    }
+
+    private static func makeDiff(file: String) -> FileDiff {
+        FileDiff(file: file, before: "", after: "+change", additions: 1, deletions: 0, status: "M")
+    }
+
+    private static func makeReasoningPart(messageID: String, partID: String, sessionID: String) -> Part {
+        Part(
+            id: partID,
+            messageID: messageID,
+            sessionID: sessionID,
+            type: "reasoning",
+            text: nil,
+            tool: nil,
+            callID: nil,
+            state: nil,
+            metadata: nil,
+            files: nil
+        )
+    }
+
+    private static func makeSSEEvent(_ json: String) -> SSEEvent {
+        try! JSONDecoder().decode(SSEEvent.self, from: Data(json.utf8))
+    }
+
+    private static func makeMessageRow(
+        messageID: String,
+        sessionID: String,
+        role: String = "assistant",
+        text: String,
+        created: Int = 0,
+        completed: Int = 1
+    ) -> MessageWithParts {
+        let message = Message(
+            id: messageID,
+            sessionID: sessionID,
+            role: role,
+            parentID: nil,
+            providerID: nil,
+            modelID: nil,
+            model: nil,
+            error: nil,
+            time: .init(created: created, completed: completed),
+            finish: "stop",
+            tokens: nil,
+            cost: nil
+        )
+        let part = Part(
+            id: "p-\(messageID)",
+            messageID: messageID,
+            sessionID: sessionID,
+            type: "text",
+            text: text,
+            tool: nil,
+            callID: nil,
+            state: nil,
+            metadata: nil,
+            files: nil
+        )
+        return MessageWithParts(info: message, parts: [part])
     }
 }
