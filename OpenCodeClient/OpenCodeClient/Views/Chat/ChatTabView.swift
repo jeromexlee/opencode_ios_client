@@ -518,50 +518,48 @@ struct ChatTabView: View {
                                 }
                             }
                             .frame(width: 32, height: 32)
-                            .background(isRecording ? Color.red : Color.clear)
+                            .background(isRecording ? Color.red : (isTranscribing ? (colorScheme == .dark ? DesignColors.Neutral.surfaceDark : DesignColors.Neutral.surfaceLight) : Color.clear))
                             .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
                             .overlay(
                                 RoundedRectangle(cornerRadius: DesignCorners.medium)
                                     .stroke(
-                                        isRecording ? Color.clear : DesignColors.Brand.primary.opacity(DesignColors.Opacity.borderStroke),
+                                        isRecording ? Color.clear : (isTranscribing ? DesignColors.Brand.primary.opacity(DesignColors.Opacity.borderStroke) : DesignColors.Brand.primary.opacity(DesignColors.Opacity.borderStroke)),
                                         lineWidth: 1.5
                                     )
                             )
                         }
                         .disabled(isSending || isTranscribing)
 
-                        Group {
-                            if state.isBusy {
-                                Button {
-                                    Task { await state.abortSession() }
-                                } label: {
-                                    Image(systemName: "stop.fill")
+                        Button {
+                            sendCurrentInput()
+                        } label: {
+                            ZStack {
+                                if isSending {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "arrow.up")
                                         .font(.body.bold())
                                         .foregroundStyle(.white)
-                                        .frame(width: 32, height: 32)
-                                        .background(Color.red)
-                                        .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
                                 }
-                            } else {
-                                Button {
-                                    sendCurrentInput()
-                                } label: {
-                                    ZStack {
-                                        if isSending {
-                                            ProgressView()
-                                                .controlSize(.small)
-                                                .tint(.white)
-                                        } else {
-                                            Image(systemName: "arrow.up")
-                                                .font(.body.bold())
-                                                .foregroundStyle(.white)
-                                        }
-                                    }
+                            }
+                            .frame(width: 32, height: 32)
+                            .background(DesignColors.Brand.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
+                        }
+                        .disabled(!ChatComposerSendGate.canSend(text: inputText, isSending: isSending, hasMarkedText: hasMarkedText) || isRecording || isTranscribing)
+
+                        if state.isBusy {
+                            Button {
+                                Task { await state.abortSession() }
+                            } label: {
+                                Image(systemName: "stop.fill")
+                                    .font(.body.bold())
+                                    .foregroundStyle(.white)
                                     .frame(width: 32, height: 32)
-                                    .background(DesignColors.Brand.primary)
+                                    .background(Color.red)
                                     .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
-                                }
-                                .disabled(!ChatComposerSendGate.canSend(text: inputText, isSending: isSending, hasMarkedText: hasMarkedText) || isRecording || isTranscribing)
                             }
                         }
                     }
