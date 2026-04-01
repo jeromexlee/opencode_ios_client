@@ -184,7 +184,7 @@ struct ContentView: View {
             set: { state.selectedTab = $0 }
         )) {
             ChatTabView(state: state)
-                .tabItem { Label(L10n.t(.appChat), systemImage: "bubble.left.and.bubble.right") }
+                .tabItem { Label(L10n.t(.appChat), systemImage: "bubble.left.and.text.bubble.right") }
                 .tag(0)
 
             FilesTabView(state: state)

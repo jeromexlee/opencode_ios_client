@@ -15,10 +15,11 @@ struct MessageRowView: View {
     let onOpenFilesTab: () -> Void
     let onForkFromMessage: ((String) -> Void)?
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.colorScheme) private var colorScheme
 
     private var cardGridColumnCount: Int { sizeClass == .regular ? 3 : 2 }
     private var cardGridColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 10), count: cardGridColumnCount)
+        Array(repeating: GridItem(.flexible(), spacing: DesignSpacing.sm), count: cardGridColumnCount)
     }
 
     private enum AssistantBlock: Identifiable {
@@ -67,12 +68,15 @@ struct MessageRowView: View {
     }
 
     @ViewBuilder
-    private func markdownText(_ text: String) -> some View {
+    private func markdownText(_ text: String, isUser: Bool) -> some View {
+        let font = isUser ? DesignTypography.bodyProminent : DesignTypography.body
         if shouldRenderMarkdown(text) {
             ResolvedMarkdownView(text: text, state: state, workspaceDirectory: workspaceDirectory)
+                .font(font)
                 .textSelection(.enabled)
         } else {
             Text(text)
+                .font(font)
                 .textSelection(.enabled)
         }
     }
@@ -128,18 +132,22 @@ struct MessageRowView: View {
 
     private var userMessageView: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(message.parts.filter { $0.isText }, id: \.id) { part in
-                markdownText(part.text ?? "")
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(DesignColors.Brand.primary)
+                    .frame(width: 4)
+                
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(message.parts.filter { $0.isText }, id: \.id) { part in
+                        markdownText(part.text ?? "", isUser: true)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.accentColor.opacity(0.07))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.accentColor.opacity(0.14), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .background(DesignColors.Brand.primary.opacity(DesignColors.userMessageFill(for: colorScheme)))
+            .clipShape(RoundedRectangle(cornerRadius: DesignCorners.large))
 
             HStack {
                 if let model = message.info.resolvedModel {
@@ -174,15 +182,13 @@ struct MessageRowView: View {
             ForEach(assistantBlocks) { block in
                 switch block {
                 case .text(let part):
-                    markdownText(part.text ?? "")
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                    markdownText(part.text ?? "", isUser: false)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case .cards(let parts):
                     LazyVGrid(
                         columns: cardGridColumns,
                         alignment: .leading,
-                        spacing: 10
+                        spacing: DesignSpacing.sm
                     ) {
                         ForEach(parts, id: \.id) { part in
                             cardView(part)
@@ -193,16 +199,12 @@ struct MessageRowView: View {
             if let err = message.info.errorMessageForDisplay {
                 Text(err)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(DesignColors.Semantic.error)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.red.opacity(0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.red.opacity(0.25), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .background(DesignColors.Semantic.error.opacity(DesignColors.surfaceFill(for: colorScheme)))
+                    .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
                     .textSelection(.enabled)
             }
         }

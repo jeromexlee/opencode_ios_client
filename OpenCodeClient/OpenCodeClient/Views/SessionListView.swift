@@ -19,7 +19,7 @@ struct SessionListView: View {
                 if state.sidebarSessions.isEmpty {
                     ContentUnavailableView(
                         L10n.t(.sessionsEmptyTitle),
-                        systemImage: "bubble.left.and.bubble.right",
+                        systemImage: "bubble.left.and.text.bubble.right",
                         description: Text(L10n.t(.sessionsEmptyDescription))
                     )
                 } else {
@@ -181,6 +181,8 @@ struct SessionRowView: View {
     var isCollapsed: Bool = false
     let onSelect: () -> Void
     var onToggleCollapse: (() -> Void)? = nil
+
+    @Environment(\.colorScheme) private var colorScheme
     
     private var isBusy: Bool {
         guard let status else { return false }
@@ -188,36 +190,42 @@ struct SessionRowView: View {
     }
 
     var body: some View {
-        HStack {
+        HStack(spacing: DesignSpacing.sm) {
             if hasChildren {
                 Button {
                     onToggleCollapse?()
                 } label: {
                     Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(DesignTypography.micro)
+                        .foregroundStyle(DesignColors.Neutral.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .frame(width: 12)
                 .accessibilityIdentifier("session-toggle-\(session.id)")
+            } else if depth > 0 {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(DesignColors.Neutral.textTertiary)
+                    .frame(width: 3, height: 3)
+                    .padding(.leading, 4.5)
             } else {
                 Color.clear
                     .frame(width: 12)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: DesignSpacing.xs) {
                 Text(session.title.isEmpty ? L10n.t(.sessionsUntitled) : session.title)
-                    .font(depth > 0 ? .subheadline : .headline)
-                    .foregroundStyle(depth > 0 ? Color.secondary : (isBusy ? Color.blue : Color.primary))
+                    .font(depth > 0 ? DesignTypography.body : DesignTypography.headline)
+                    .foregroundStyle(depth > 0 ? DesignColors.Neutral.textSecondary : (isBusy ? DesignColors.Brand.primary : DesignColors.Neutral.text))
+                    .lineLimit(1)
 
-                HStack(spacing: 8) {
+                HStack(spacing: DesignSpacing.sm) {
                     Text(formattedDate(session.time.updated))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(DesignTypography.meta)
+                        .foregroundStyle(DesignColors.Neutral.textSecondary)
 
                     if let status {
                         Text(statusLabel(status))
-                            .font(.caption)
+                            .font(DesignTypography.meta)
                             .foregroundStyle(statusColor(status))
                     }
                 }
@@ -230,17 +238,17 @@ struct SessionRowView: View {
                     .controlSize(.small)
             } else if isSelected {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(DesignColors.Brand.primary.opacity(0.6))
             }
         }
-        .padding(.vertical, 4)
-        .padding(.leading, CGFloat(depth) * 24)
+        .padding(.vertical, DesignSpacing.sm)
+        .padding(.leading, CGFloat(depth) * DesignSpacing.xl)
         .contentShape(Rectangle())
         .onTapGesture {
             guard !isDeleting else { return }
             onSelect()
         }
-        .listRowBackground(isSelected ? Color.blue.opacity(0.08) : Color.clear)
+        .listRowBackground(isSelected ? DesignColors.Brand.primary.opacity(DesignColors.Opacity.selectionFill) : Color.clear)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("session-row-\(session.id)")
     }
@@ -263,8 +271,8 @@ struct SessionRowView: View {
 
     private func statusColor(_ status: SessionStatus) -> Color {
         switch status.type {
-        case "busy", "retry": return .blue
-        default: return .secondary
+        case "busy", "retry": return DesignColors.Brand.primary
+        default: return DesignColors.Neutral.textSecondary
         }
     }
 }

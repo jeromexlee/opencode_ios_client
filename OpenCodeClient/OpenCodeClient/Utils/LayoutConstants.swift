@@ -28,12 +28,12 @@ enum LayoutConstants {
     
     // MARK: - Animation Durations
     enum Animation {
-        static let defaultDuration: Double = 0.25
         static let shortDuration: Double = 0.15
+        static let defaultDuration: Double = 0.25
         static let longDuration: Double = 0.35
     }
     
-    // MARK: - Spacing
+    // MARK: - Spacing (updated to design system values)
     enum Spacing {
         static let compact: CGFloat = 4
         static let standard: CGFloat = 8
@@ -41,9 +41,9 @@ enum LayoutConstants {
         static let spacious: CGFloat = 16
     }
     
-    // MARK: - Message List
+    // MARK: - Message List (increased spacing for readability)
     enum MessageList {
-        static let spacing: CGFloat = 12
+        static let spacing: CGFloat = 20
         static let horizontalPadding: CGFloat = 16
         static let verticalPadding: CGFloat = 10
     }

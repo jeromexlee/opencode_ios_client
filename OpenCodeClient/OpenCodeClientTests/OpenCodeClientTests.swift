@@ -877,6 +877,10 @@ struct LayoutConstantsTests {
         #expect(LayoutConstants.Spacing.standard < LayoutConstants.Spacing.comfortable)
         #expect(LayoutConstants.Spacing.comfortable < LayoutConstants.Spacing.spacious)
     }
+
+    @Test func messageListSpacing() {
+        #expect(LayoutConstants.MessageList.spacing == 20)
+    }
 }
 
 // MARK: - Speech Recognition Defaults
