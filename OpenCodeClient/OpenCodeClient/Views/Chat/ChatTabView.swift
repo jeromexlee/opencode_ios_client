@@ -91,6 +91,7 @@ struct ChatTabView: View {
     @State private var pendingBottomVisibilityTask: Task<Void, Never>?
     @State private var isNearBottom = true
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.colorScheme) private var colorScheme
 
     private var useGridCards: Bool { sizeClass == .regular }
 
@@ -318,7 +319,7 @@ struct ChatTabView: View {
                 ScrollViewReader { proxy in
                     GeometryReader { scrollGeometry in
                         ScrollView {
-                            VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: DesignSpacing.messageVertical) {
                                 if showLoadMoreHint {
                                     HStack(spacing: 8) {
                                         if state.isLoadingOlderMessagesInCurrentSession {
@@ -341,28 +342,15 @@ struct ChatTabView: View {
                                     emptySessionStateView
                                 } else {
                                     ForEach(chatItems) { item in
-                                        switch item {
-                                        case .group(let group):
-                                            switch group {
-                                            case .user(let msg):
-                                                MessageRowView(
-                                                    state: state,
-                                                    message: msg,
-                                                    sessionTodos: state.sessionTodos[msg.info.sessionID] ?? [],
-                                                    workspaceDirectory: state.currentSession?.directory,
-                                                    onOpenResolvedPath: openFileInChat,
-                                                    onOpenFilesTab: openFilesTab,
-                                                    onForkFromMessage: { messageID in
-                                                        Task { await state.forkSession(messageID: messageID) }
-                                                    }
-                                                )
-                                            case .assistantMerged(let msgs):
-                                                if let first = msgs.first {
-                                                    let merged = MessageWithParts(info: first.info, parts: msgs.flatMap(\.parts))
+                                        Group {
+                                            switch item {
+                                            case .group(let group):
+                                                switch group {
+                                                case .user(let msg):
                                                     MessageRowView(
                                                         state: state,
-                                                        message: merged,
-                                                        sessionTodos: state.sessionTodos[merged.info.sessionID] ?? [],
+                                                        message: msg,
+                                                        sessionTodos: state.sessionTodos[msg.info.sessionID] ?? [],
                                                         workspaceDirectory: state.currentSession?.directory,
                                                         onOpenResolvedPath: openFileInChat,
                                                         onOpenFilesTab: openFilesTab,
@@ -370,11 +358,27 @@ struct ChatTabView: View {
                                                             Task { await state.forkSession(messageID: messageID) }
                                                         }
                                                     )
+                                                case .assistantMerged(let msgs):
+                                                    if let first = msgs.first {
+                                                        let merged = MessageWithParts(info: first.info, parts: msgs.flatMap(\.parts))
+                                                        MessageRowView(
+                                                            state: state,
+                                                            message: merged,
+                                                            sessionTodos: state.sessionTodos[merged.info.sessionID] ?? [],
+                                                            workspaceDirectory: state.currentSession?.directory,
+                                                            onOpenResolvedPath: openFileInChat,
+                                                            onOpenFilesTab: openFilesTab,
+                                                            onForkFromMessage: { messageID in
+                                                                Task { await state.forkSession(messageID: messageID) }
+                                                            }
+                                                        )
+                                                    }
                                                 }
+                                            case .activity(let a):
+                                                TurnActivityRowView(activity: a)
                                             }
-                                        case .activity(let a):
-                                            TurnActivityRowView(activity: a)
                                         }
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                                     }
                                 }
                                 if let streamingPart = state.streamingReasoningPart {
@@ -384,9 +388,9 @@ struct ChatTabView: View {
 
                                 if useGridCards {
                                     LazyVGrid(
-                                        columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
+                                        columns: Array(repeating: GridItem(.flexible(), spacing: DesignSpacing.sm), count: 3),
                                         alignment: .leading,
-                                        spacing: 10
+                                        spacing: DesignSpacing.sm
                                     ) {
                                         ForEach(currentPermissions) { perm in
                                             PermissionCardView(permission: perm) { response in
@@ -476,7 +480,7 @@ struct ChatTabView: View {
                 }
 
                  Divider()
-                 HStack(alignment: .bottom, spacing: 10) {
+                 HStack(alignment: .bottom, spacing: DesignSpacing.md) {
                     ZStack(alignment: .topLeading) {
                         ChatComposerTextView(
                             text: $inputText,
@@ -485,6 +489,7 @@ struct ChatTabView: View {
                             onSubmit: sendCurrentInput
                         )
                         .frame(minHeight: 32, maxHeight: 100)
+                        .accessibilityIdentifier("chat-input")
 
                         if inputText.isEmpty {
                             Text(L10n.t(.chatInputPlaceholder))
@@ -495,41 +500,53 @@ struct ChatTabView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 5)
-                    .background(Color(.systemGray6))
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(Color(.systemGray4), lineWidth: 0.5)
-                    )
+                    .background(colorScheme == .dark ? DesignColors.Neutral.composerDark : DesignColors.Neutral.composerLight)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignCorners.large))
 
-                    VStack(spacing: 8) {
+                    VStack(spacing: DesignSpacing.sm) {
                         Button {
                             Task { await toggleRecording() }
                         } label: {
-                            if isTranscribing {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Image(systemName: isRecording ? "mic.circle.fill" : "mic.circle")
-                                    .font(.title)
-                                    .symbolRenderingMode(.hierarchical)
-                                    .foregroundStyle(isRecording ? .red : .secondary)
+                            ZStack {
+                                if isTranscribing {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Image(systemName: "mic.fill")
+                                        .font(.callout)
+                                        .foregroundStyle(isRecording ? .white : DesignColors.Brand.primary)
+                                }
                             }
+                            .frame(width: 32, height: 32)
+                            .background(isRecording ? Color.red : (isTranscribing ? (colorScheme == .dark ? DesignColors.Neutral.surfaceDark : DesignColors.Neutral.surfaceLight) : Color.clear))
+                            .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: DesignCorners.medium)
+                                    .stroke(
+                                        isRecording ? Color.clear : (isTranscribing ? DesignColors.Brand.primary.opacity(DesignColors.Opacity.borderStroke) : DesignColors.Brand.primary.opacity(DesignColors.Opacity.borderStroke)),
+                                        lineWidth: 1.5
+                                    )
+                            )
                         }
                         .disabled(isSending || isTranscribing)
 
                         Button {
                             sendCurrentInput()
                         } label: {
-                            if isSending {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .font(.title)
-                                    .symbolRenderingMode(.hierarchical)
-                                    .foregroundColor(.accentColor)
+                            ZStack {
+                                if isSending {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "arrow.up")
+                                        .font(.body.bold())
+                                        .foregroundStyle(.white)
+                                }
                             }
+                            .frame(width: 32, height: 32)
+                            .background(DesignColors.Brand.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
                         }
                         .disabled(!ChatComposerSendGate.canSend(text: inputText, isSending: isSending, hasMarkedText: hasMarkedText) || isRecording || isTranscribing)
 
@@ -537,15 +554,18 @@ struct ChatTabView: View {
                             Button {
                                 Task { await state.abortSession() }
                             } label: {
-                                Image(systemName: "stop.circle.fill")
-                                    .font(.title)
-                                    .foregroundStyle(.red)
+                                Image(systemName: "stop.fill")
+                                    .font(.body.bold())
+                                    .foregroundStyle(.white)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.red)
+                                    .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
                             }
                         }
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 6)
+                .padding(.vertical, 10)
                 .background(.bar)
             }
             .navigationTitle(state.currentSession?.title ?? L10n.t(.appChat))
@@ -745,34 +765,48 @@ struct ChatTabView: View {
     @ViewBuilder
     private var emptySessionStateView: some View {
         if state.currentSessionID == nil {
-            Text(L10n.t(.chatSelectSessionFirst))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.top, 20)
+            VStack(spacing: DesignSpacing.md) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(DesignColors.Brand.primary.opacity(0.2))
+                Text(L10n.t(.chatSelectSessionFirst))
+                    .font(DesignTypography.headline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 60)
+            .frame(maxWidth: .infinity)
         } else if isCurrentSessionBusy {
             // If busy but there is no user turn yet, show a lightweight placeholder.
             if lastUserMessageIDInCurrentSession == nil {
                 HStack(spacing: 10) {
                     ProgressView()
                     Text(L10n.t(.chatSessionBusyMessage))
-                        .font(.caption)
+                        .font(DesignTypography.meta)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 18)
             }
         } else {
-            Text(L10n.t(.chatNoMessages))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.top, 20)
+            VStack(spacing: DesignSpacing.md) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 48))
+                    .foregroundStyle(DesignColors.Brand.gold.opacity(0.3))
+                Text(L10n.t(.chatNoMessages))
+                    .font(DesignTypography.headline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 60)
+            .frame(maxWidth: .infinity)
         }
     }
 
     private func statusColor(_ status: SessionStatus) -> Color {
         switch status.type {
-        case "busy": return .blue
-        case "error": return .red
-        default: return .green
+        case "busy": return DesignColors.Brand.primary
+        case "error": return DesignColors.Semantic.error
+        default: return DesignColors.Semantic.success
         }
     }
 
@@ -832,27 +866,21 @@ private struct TurnActivityRowView: View {
         let elapsed = activity.elapsedString(now: now)
         let text = activity.text
 
-        return HStack(spacing: 8) {
+        return HStack(spacing: DesignSpacing.sm) {
             Image(systemName: activity.state == .running ? "clock" : "checkmark.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(DesignTypography.micro)
+                .foregroundStyle(DesignColors.Neutral.textSecondary)
             Text(text)
+                .font(DesignTypography.micro)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .foregroundStyle(DesignColors.Neutral.textSecondary)
             Spacer(minLength: 12)
             Text(elapsed)
+                .font(DesignTypography.micro)
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DesignColors.Neutral.textTertiary)
         }
-        .font(.caption2)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(.systemGray4).opacity(0.6), lineWidth: 0.5)
-        )
+        .padding(.vertical, DesignSpacing.sm)
     }
 }

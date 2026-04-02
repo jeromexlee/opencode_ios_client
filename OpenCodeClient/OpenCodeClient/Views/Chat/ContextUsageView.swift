@@ -81,12 +81,19 @@ struct ContextUsageButton: View {
         return min(1.0, Double(s.tokens.total) / Double(s.contextLimit))
     }
 
+    private var isNearCapacity: Bool {
+        guard let p = progress else { return false }
+        return p >= 0.85
+    }
+
     private var ringColor: Color {
         guard let p = progress else { return .secondary.opacity(0.55) }
         if p >= 0.9 { return .red }
         if p >= 0.7 { return .orange }
-        return .accentColor
+        return DesignColors.Brand.primary
     }
+
+    private var ringSize: CGFloat { 18 }
 
     var body: some View {
         Button {
@@ -103,16 +110,21 @@ struct ContextUsageButton: View {
         } label: {
             ZStack {
                 Circle()
-                    .stroke(Color.secondary.opacity(0.25), lineWidth: 3)
+                    .stroke(Color.secondary.opacity(DesignColors.Opacity.ringTrack), lineWidth: 2.5)
                 if let p = progress {
                     Circle()
                         .trim(from: 0, to: p)
-                        .stroke(ringColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .stroke(ringColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
             }
-            .frame(width: 22, height: 22)
+            .frame(width: ringSize, height: ringSize)
             .contentShape(Rectangle())
+            .scaleEffect(isNearCapacity ? 1.15 : 1.0)
+            .animation(
+                isNearCapacity ? DesignAnimation.breathing : .default,
+                value: isNearCapacity
+            )
         }
         .buttonStyle(.plain)
         .help(L10n.t(.contextUsageHelp))

@@ -177,10 +177,10 @@ struct CodeView: View {
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { i, line in
-                        HStack(alignment: .top, spacing: 8) {
+                        HStack(alignment: .top, spacing: DesignSpacing.sm) {
                             Text("\(i + 1)")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                                .font(DesignTypography.microMono)
+                                .foregroundStyle(DesignColors.Neutral.textSecondary)
                                 .frame(width: 36, alignment: .trailing)
                             Text(line)
                                 .font(.system(.body, design: .monospaced))
@@ -191,7 +191,7 @@ struct CodeView: View {
                         .padding(.vertical, 2)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, DesignSpacing.sm)
                 .frame(minWidth: 400, alignment: .leading)
             }
         }

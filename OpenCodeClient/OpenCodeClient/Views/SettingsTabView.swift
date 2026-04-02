@@ -59,10 +59,10 @@ struct SettingsTabView: View {
                         Spacer()
                         if state.isConnected {
                             Label(L10n.t(.settingsConnected), systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(DesignColors.Semantic.success)
                         } else {
                             Label(L10n.t(.settingsDisconnected), systemImage: "xmark.circle.fill")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(DesignColors.Semantic.error)
                         }
                     }
 
@@ -199,7 +199,7 @@ struct SettingsTabView: View {
                                 }
                             case .connected:
                                 Label(L10n.t(.settingsConnected), systemImage: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(DesignColors.Semantic.success)
                             case .error(let msg):
                                 Text(msg)
                                     .foregroundStyle(.red)
@@ -326,7 +326,7 @@ struct SettingsTabView: View {
                         Spacer()
                         if state.aiBuilderConnectionOK {
                             Label(L10n.t(.commonOk), systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(DesignColors.Semantic.success)
                         } else if let err = state.aiBuilderConnectionError {
                             Text(err)
                                 .foregroundStyle(.red)
