@@ -221,6 +221,6 @@ curl -s -N -H "Accept: text/event-stream" "http://192.168.180.128:4096/global/ev
 
 **根因**：`MarkdownImageResolver` 会先把 markdown 文件目录和相对路径拼成 `docs/reports/../assets/foo.png`，然后交给 `PathNormalizer.resolveWorkspaceRelativePath(...)`。旧实现把 `.` / `..` 直接过滤掉，而不是按文件系统语义折叠，结果错误变成 `docs/reports/assets/foo.png`，请求到了不存在的文件。
 
-**最终做法**：把 `PathNormalizer.normalize()` 改成 stack-based 路径折叠：普通 segment 入栈，`.` 跳过，`..` 出栈（如果栈非空）。这样 `docs/reports/../assets/foo.png` 会正确变成 `docs/assets/foo.png`，同时仍然阻止明显越过 workspace 根的路径穿越。
+**最终做法**：分两层修复。第一层，把 `PathNormalizer.normalize()` 改成 stack-based 路径折叠：普通 segment 入栈，`.` 跳过，`..` 出栈（如果栈非空）。这样 `docs/reports/../assets/foo.png` 会正确变成 `docs/assets/foo.png`，同时仍然阻止明显越过 workspace 根的路径穿越。第二层，`FileContentView` 的 markdown preview 不再依赖 `MarkdownUI` 默认网络图片加载器去猜相对路径，而是显式传入 `imageBaseURL` 和自定义 `WorkspaceMarkdownImageProvider`，由客户端通过 `state.loadFileContent` 读取 workspace 内图片并渲染。
 
-**Lesson**：相对路径安全处理不是“把危险段删掉”这么简单。对 `..` 的错误处理会破坏合法路径语义，尤其容易在 markdown 图片、patch 跳转、以及 repo 内部相对文件引用上制造隐蔽 bug。客户端路径规范化必须保留文件系统折叠语义，再叠加越界防护。
+**Lesson**：相对路径安全处理不是“把危险段删掉”这么简单。对 `..` 的错误处理会破坏合法路径语义，尤其容易在 markdown 图片、patch 跳转、以及 repo 内部相对文件引用上制造隐蔽 bug。与此同时，Markdown 渲染器的默认图片加载策略往往假设 URL 已经是最终可访问地址；如果产品支持 repo 内相对图片，客户端必须自己提供 base URL 和受控的 image provider，不能把这个责任留给默认网络加载器。
