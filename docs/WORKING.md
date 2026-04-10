@@ -10,6 +10,57 @@
 - **测试**：✅ 所有 unit tests + UI tests 通过
 - **Phase**：视觉重设计 — 全部完成，待 PR 合并
 
+## 默认工作流约定
+
+### "用最新的 code 编译" 的默认语义
+
+在这个项目里，这句话默认**不是**指直接拿远端最新代码原地编译。
+
+默认含义是：
+
+1. 进入 `adhoc_jobs/opencode_ios_client/opencode-official`
+2. `fetch origin`，获取最新 `origin/dev`
+3. 在**保留当前本地提交**的前提下，把当前本地集成分支 rebase 到最新 `origin/dev` 之上
+4. 用 rebase 后的 server 代码继续编译、测试、部署 iOS client / server 联调环境
+
+这条约定的目标是固定一种工作语义：**最新代码 = 最新上游 `origin/dev` + 当前本地补丁栈**。
+
+这里的“本地提交”专指：当前分支上**已经提交**、但还没有集成到最新 `origin/dev` 之上的那些提交；**不包含** working tree 里的未提交改动。
+
+只有当需求明确说明“不要本地提交，只编译纯上游最新代码”时，才跳过 rebase，直接基于干净的 `origin/dev` 工作。
+
+### 为什么这样约定
+
+- `opencode-official` 当前可验证的主线是 `dev` / `origin/dev`，不是 `master`
+- 本地通常会有一组尚未上游化的 patch；直接编译纯上游会丢掉这些行为差异
+- 先 rebase 再编译，能更早暴露上游变更与本地 patch 的冲突，而不是把问题留到更后面
+
+### 执行边界
+
+- 这是一个**保留本地提交**的集成工作流，不是“强制重置到远端”
+- 如果 rebase 出现冲突或失败，默认先暂停并确认处理方式，不继续进入编译/部署阶段
+- 如果只是做只读调研、API 对照或回归定位，不默认触发这条工作流
+
+### Success criteria
+
+- 成功标准不只是“编译产出了 binary”，还包括**运行路径正确**
+- 在 `knowledge_working` 下启动 OpenCode 时，所执行的必须是这次 workflow 产出的最新 binary，而不是之前遗留在磁盘上的旧 binary
+- 对当前工作流来说，只有当下面这类命令实际启动的是刚刚 rebase + build 得到的 binary，才算完成闭环验证：
+
+```bash
+OPENCODE_DB_PATH="$HOME/.local/share/opencode/opencode.db" \
+OPENCODE_SERVER_PASSWORD="restart_Web@" \
+/Users/grapeot/co/knowledge_working/adhoc_jobs/opencode_ios_client/opencode-official/packages/opencode/dist/opencode-darwin-arm64/bin/opencode web --hostname 0.0.0.0
+```
+
+- 如果该命令仍然指向旧构建产物，或无法证明它对应的是本轮 rebase 后的新 binary，则这次“用最新的 code 编译”不能算完成
+
+### 运行验证边界
+
+- 如果用户当前正在活跃使用 OpenCode，尤其已经有一个 `4096` 端口上的 server 在服务中，**不要**为了验证新 binary 去 kill、restart、或接管这个 live process
+- 这种场景下，默认跳过会干扰现有使用的 runtime 验证步骤
+- 如果仍然需要运行时验证，应使用单独的临时进程/临时端口完成，并且只管理自己新启动的那条验证进程，不触碰用户现有的 `4096` 进程
+
 ## 进行中
 
 - [ ] **PR 合并** — `design-redesign` 分支所有改动已完成并通过测试，待创建 PR 合并到 master
