@@ -62,7 +62,12 @@ open OpenCodeClient.xcodeproj
 
 For iPhone and iPad, select the `OpenCodeClient` scheme, pick a simulator or device, and hit Run. For Apple Vision Pro, select the `OpenCodeClientVision` scheme first, then choose the `Apple Vision Pro` run destination. If Xcode shows `Apple Vision Pro — Designed for iPad`, the active scheme is still `OpenCodeClient`, which runs the iPad-compatible app instead of the native visionOS target. Swift Package dependencies resolve automatically on first build.
 
-This repo vendors patched local copies of `swift-markdown-ui` and `NetworkImage` under `third_party/` because the upstream package manifests do not currently advertise visionOS support. The app project points Xcode at those local packages.
+This repo uses pinned forked Swift Package dependencies for Markdown rendering on visionOS:
+
+- `https://github.com/grapeot/swift-markdown-ui`, exact `2.4.1-visionos.1`
+- `https://github.com/grapeot/NetworkImage`, exact `6.0.1-visionos.1`
+
+Those forks contain the minimal package manifest and placeholder-image changes needed for visionOS while the upstream packages do not advertise visionOS support.
 
 For the native visionOS target, build `OpenCodeClientVision`:
 
