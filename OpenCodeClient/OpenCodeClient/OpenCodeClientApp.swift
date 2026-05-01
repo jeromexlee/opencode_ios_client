@@ -7,7 +7,7 @@ import SwiftUI
 
 #if os(visionOS)
 private enum VisionWindowDefaults {
-    static let width: CGFloat = 1382
+    static let width: CGFloat = 1500
     static let height: CGFloat = 1188
 }
 #endif
