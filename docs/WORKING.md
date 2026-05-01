@@ -71,8 +71,14 @@ OPENCODE_SERVER_PASSWORD="restart_Web@" \
 - [x] **visionOS 输入区交互尺寸与窗口默认大小（2026-05-01）**：
   - [x] 录音按钮 active 状态改为红色 icon + 红色 tint 背景/描边，避免 visionOS glass/material compositing 把原来的纯红背景洗成白色
   - [x] composer 右侧 mic / send / stop 三个 action buttons 在 visionOS 上从 32pt 放大到 48pt，并把垂直间距放宽到 12pt，降低 gaze interaction 难度；iPhone/iPad 保持原 32pt 尺寸
+  - [x] stop 按钮在 AI busy 时改为与录音 active 态一致的红色 icon + tint 背景/描边，而不是纯红实心背景；这样在 visionOS glass/material 下更容易保持红色语义
+  - [x] composer 底部容器 padding 改为 design token：visionOS 使用 32pt horizontal / 20pt vertical，iPhone/iPad 保持 16pt / 10pt，避免右下角按钮贴近 Apple Vision Pro window resize handle
+  - [x] composer 输入框高度改为跨平台 token：visionOS 48–160pt，iPhone/iPad 32–100pt，避免大窗口里输入区仍按手机高度限制
+  - [x] tool-call header 右侧 open-file 图标在 visionOS 上放大为 44pt hit target + `title3` icon，方便用眼控/手势打开 patch/edit 详情文件；iPhone/iPad 保持 24pt 紧凑尺寸
+  - [x] visionOS split view 左侧 Workspace / Sessions sidebar 宽度调到 iPad 默认的 130%（`1.3 / 6.0`），最小宽度同步从 10% 提到 13%
   - [x] `OpenCodeClientVision` 默认窗口尺寸设为 2304×1080，约为系统默认宽度的 180%、高度的 150%，减少首次打开后手动拉大窗口的需求
   - [x] 后续根据实机观感把默认窗口调窄并略增高：宽度从 2304 降到 1382（约 60%），高度从 1080 增到 1188（约 110%）；再把宽度微调到 1500，高度保持 1188
+  - [x] 后续继续把默认窗口宽度调到 2000，高度保持 1188
   - [x] 验证：`OpenCodeClientVision` xrsimulator build 通过；`OpenCodeClient` iphonesimulator build 通过
 
 - [x] **visionOS 原生 target 基线（2026-04-30）**：
@@ -91,6 +97,7 @@ OPENCODE_SERVER_PASSWORD="restart_Web@" \
   - [x] `NetworkImage/Package.swift` 升到 Swift tools 5.9，声明 `.visionOS(.v1)`；`NetworkImage.swift` 增加 visionOS availability，并用 1x1 transparent `CGImage` 作为空图占位，避开 UIKit/AppKit-only empty image initializer
   - [x] `MessageRowView` 与 `FileContentView` 在 visionOS 上恢复使用 `MarkdownUI.Markdown`，删除临时 native Markdown fallback
   - [x] 打开 visionOS Markdown embedded image 支持：`OpenCodeClientVision` 显式链接 `NetworkImage`，`FileContentView` 与 `MessageRowView` 在 visionOS 上复用 iOS 的 `WorkspaceMarkdownImageProvider` / `MarkdownImageResolver` 路径
+  - [x] visionOS 上点击 Markdown embedded image 时改为打开独立 Image Preview window；iPhone/iPad 继续使用原有 sheet 预览
   - [x] 验证：`xcodebuild -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClientVision" -configuration Debug -sdk xrsimulator CODE_SIGNING_ALLOWED=NO build` 通过
   - [x] 验证：`xcodebuild -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build` 通过
   - [x] 后续验证：打开 visionOS Markdown image gate 后，`OpenCodeClientVision` xrsimulator build 与 `OpenCodeClient` iphonesimulator build 均通过

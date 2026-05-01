@@ -251,6 +251,8 @@ xcodebuild -project "OpenCodeClient.xcodeproj" \
 
 Markdown 渲染相关改动还需要同时跑 iOS app build。原因是 iOS 与 visionOS 共用同一套 SPM 依赖（`grapeot/swift-markdown-ui` 与 `grapeot/NetworkImage` 的 pinned revision），visionOS build 只能证明 package patch 对 xrOS 可用，iOS build 才能证明这条依赖图没有破坏原有 iOS target。
 
+visionOS 独有 window scene、default window size、split view width fraction、或 composer / tool-call design token 改动，也需要跑 `OpenCodeClientVision` xrsimulator build。若改动复用共享 SwiftUI view（例如 Markdown image preview、chat composer、tool-call open-file affordance），还需要顺序跑 iOS app build，确认 iPad/iPhone 的 sheet 预览、composer 布局和 tool-call 操作路径没有被 visionOS 条件分支影响。
+
 如果遇到 simulator 本身的 creation / launch 问题，需要明确区分：
 
 - 测试环境失败
