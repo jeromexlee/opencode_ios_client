@@ -11,6 +11,7 @@
 		AA000001AAAAAAAA00000001 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AA000002AAAAAAAA00000002 /* MarkdownUI */; };
 		AA000004AAAAAAAA00000004 /* NetworkImage in Frameworks */ = {isa = PBXBuildFile; productRef = AA000005AAAAAAAA00000005 /* NetworkImage */; };
 		AA2600000000000000000009 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = AA000002AAAAAAAA00000002 /* MarkdownUI */; };
+		AA2600000000000000000010 /* NetworkImage in Frameworks */ = {isa = PBXBuildFile; productRef = AA000005AAAAAAAA00000005 /* NetworkImage */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -85,6 +86,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA2600000000000000000009 /* MarkdownUI in Frameworks */,
+				AA2600000000000000000010 /* NetworkImage in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -203,6 +205,7 @@
 			name = OpenCodeClientVision;
 			packageProductDependencies = (
 				AA000002AAAAAAAA00000002 /* MarkdownUI */,
+				AA000005AAAAAAAA00000005 /* NetworkImage */,
 			);
 			productName = OpenCodeClientVision;
 			productReference = AA2600000000000000000001 /* OpenCodeClientVision.app */;

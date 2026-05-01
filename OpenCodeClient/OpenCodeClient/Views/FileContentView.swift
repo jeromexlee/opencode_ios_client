@@ -229,11 +229,6 @@ struct MarkdownPreviewView: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    #if os(visionOS)
-                    Markdown(text)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    #else
                     Markdown(
                         text,
                         imageBaseURL: WorkspaceMarkdownImageProvider.imageBaseURL(markdownFilePath: markdownFilePath)
@@ -245,18 +240,13 @@ struct MarkdownPreviewView: View {
                             )
                         )
                         .textSelection(.enabled)
-                    #endif
                 }
             }
             .padding()
         }
         .onAppear {
             let fallback = useRawTextFallback
-            #if os(visionOS)
-            let imageBaseURL = "markdownui-no-network-image"
-            #else
             let imageBaseURL = WorkspaceMarkdownImageProvider.imageBaseURL(markdownFilePath: markdownFilePath)?.absoluteString ?? "nil"
-            #endif
             print("[MarkdownPreviewView] onAppear len=\(text.count) useRawTextFallback=\(fallback) imageBaseURL=\(imageBaseURL)")
         }
     }
