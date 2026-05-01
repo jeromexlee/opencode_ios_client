@@ -73,9 +73,15 @@ struct MessageRowView: View {
     private func markdownText(_ text: String, isUser: Bool) -> some View {
         let font = isUser ? DesignTypography.bodyProminent : DesignTypography.body
         #if os(visionOS)
-        Text(text)
-            .font(font)
-            .textSelection(.enabled)
+        if shouldRenderMarkdown(text) {
+            NativeMarkdownText(text)
+                .font(font)
+                .textSelection(.enabled)
+        } else {
+            Text(text)
+                .font(font)
+                .textSelection(.enabled)
+        }
         #else
         if shouldRenderMarkdown(text) {
             ResolvedMarkdownView(text: text, state: state, workspaceDirectory: workspaceDirectory)

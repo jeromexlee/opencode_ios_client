@@ -226,16 +226,16 @@ struct MarkdownPreviewView: View {
     var body: some View {
         ScrollView {
             Group {
-                #if os(visionOS)
-                Text(text)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                #else
                 if useRawTextFallback {
                     Text(text)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
+                    #if os(visionOS)
+                    NativeMarkdownText(text)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    #else
                     Markdown(
                         text,
                         imageBaseURL: WorkspaceMarkdownImageProvider.imageBaseURL(markdownFilePath: markdownFilePath)
@@ -247,15 +247,15 @@ struct MarkdownPreviewView: View {
                             )
                         )
                         .textSelection(.enabled)
+                    #endif
                 }
-                #endif
             }
             .padding()
         }
         .onAppear {
             let fallback = useRawTextFallback
             #if os(visionOS)
-            let imageBaseURL = "nil"
+            let imageBaseURL = "native-markdown"
             #else
             let imageBaseURL = WorkspaceMarkdownImageProvider.imageBaseURL(markdownFilePath: markdownFilePath)?.absoluteString ?? "nil"
             #endif
