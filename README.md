@@ -1,6 +1,6 @@
 # OpenCode iOS Client
 
-A native iOS client for [OpenCode](https://github.com/opencode-ai/opencode). Connect to your OpenCode server from your iPhone or iPad to chat with AI agents, monitor tool calls in real time, and browse code changes on the go.
+A native iOS, iPadOS, and visionOS client for [OpenCode](https://github.com/opencode-ai/opencode). Connect to your OpenCode server from your iPhone, iPad, or Apple Vision Pro to chat with AI agents, monitor tool calls in real time, and browse code changes on the go.
 
 ## Install via TestFlight
 
@@ -16,6 +16,15 @@ No Apple Developer account needed. Just tap the link on your iOS device.
 - **Files**: file tree browser, session diffs, markdown preview, image preview with zoom/pan, code view with line numbers
 - **Settings**: server connection, Basic Auth, SSH tunnel, theme, voice transcription
 
+### Apple Vision Pro support
+
+The `OpenCodeClientVision` target is a native visionOS build that reuses the existing iPad-style three-column `NavigationSplitView` layout: sidebar, file preview, and chat. It deliberately avoids the iPhone tab-based layout.
+
+Current visionOS baseline limitations:
+
+- SSH tunnel settings are hidden and SSH tunneling is not available. Connect directly to a LAN or HTTPS OpenCode server instead.
+- Markdown content uses raw selectable text rendering while the MarkdownUI dependency is evaluated for visionOS. iOS and iPadOS keep the full MarkdownUI renderer.
+
 ### Hardware keyboard behavior on iPad
 
 - `Enter`: insert a newline
@@ -24,7 +33,7 @@ No Apple Developer account needed. Just tap the link on your iOS device.
 
 ## Requirements
 
-- iOS 17.0+
+- iOS 17.0+ or visionOS 26.0+ for the native Vision target
 - A running OpenCode server (`opencode serve` or `opencode web`)
 - Xcode 16+ (only if building from source)
 
@@ -52,6 +61,16 @@ open OpenCodeClient.xcodeproj
 ```
 
 Select the `OpenCodeClient` scheme, pick a simulator or device, and hit Run. Swift Package dependencies resolve automatically on first build.
+
+For the native visionOS target, build `OpenCodeClientVision`:
+
+```bash
+xcodebuild -project "OpenCodeClient.xcodeproj" \
+  -target "OpenCodeClientVision" \
+  -configuration Debug \
+  -sdk xrsimulator \
+  CODE_SIGNING_ALLOWED=NO build
+```
 
 ## License
 

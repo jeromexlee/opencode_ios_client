@@ -20,6 +20,7 @@
 | --- | --- | --- | --- |
 | `OpenCodeClientTests` | Swift Testing（`import Testing`） | 单元测试、契约测试、状态流测试 | 主力测试层 |
 | `OpenCodeClientUITests` | XCTest UI Testing | 启动与关键交互 smoke test | 轻量但有效 |
+| `OpenCodeClientVision` | xcodebuild target build | visionOS 原生 target 编译 smoke | 保护平台条件编译与 target 配置 |
 
 ## 主要测试文件
 
@@ -235,6 +236,18 @@ UI smoke tests 应该继续保持少而关键。
 xcodebuild build -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'generic/platform=iOS Simulator'
 xcodebuild test -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4'
 ```
+
+涉及 visionOS target、平台条件编译、或共享 SwiftUI view 的改动，还要跑：
+
+```bash
+xcodebuild -project "OpenCodeClient.xcodeproj" \
+  -target "OpenCodeClientVision" \
+  -configuration Debug \
+  -sdk xrsimulator \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+当前 `OpenCodeClientVision` 是编译 smoke target，还没有单独的 visionOS test bundle。它的主要保护面是：Xcode project target 配置正确、共享源码没有引用 visionOS unavailable API、visionOS 不链接 iOS-only/暂不支持的功能依赖。
 
 如果遇到 simulator 本身的 creation / launch 问题，需要明确区分：
 

@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- **最后更新**：2026-04-28
-- **分支**：`model/update-deepseek`（from master）
-- **编译**：✅ `xcodebuild build` 通过
-- **测试**：✅ `xcodebuild test` 通过
-- **Phase**：默认模型切换到 GPT，GPT 预设升级到 5.5
+- **最后更新**：2026-04-30
+- **分支**：`visionos`（from master）
+- **编译**：✅ `OpenCodeClientVision` xrsimulator build 通过
+- **测试**：✅ iOS build/test 回归验证通过
+- **Phase**：visionOS 原生 target 基线
 
 ## 默认工作流约定
 
@@ -67,6 +67,15 @@ OPENCODE_SERVER_PASSWORD="restart_Web@" \
 - [ ] **Model 列表更新 — 删除 Opus/Sonnet，添加 DeepSeek（2026-04-23）**：删除 `anthropic/claude-opus-4-6` 和 `anthropic/claude-sonnet-4-6`，新增 `deepseek/deepseek-v4-pro`
 
 ## 已完成（近期）
+
+- [x] **visionOS 原生 target 基线（2026-04-30）**：
+  - [x] 新增 `OpenCodeClientVision` application target，SDK 指向 `xros`，device family 设为 Vision，源码复用现有 `OpenCodeClient/` synchronized root group
+  - [x] 保留 iPad 三栏 `NavigationSplitView` 作为 visionOS 的主 layout；不引入 tab-based 顶层导航
+  - [x] visionOS 首版不支持 SSH tunnel：`Settings` 中隐藏 SSH Tunnel section，启动/前后台恢复流程不再尝试自动连接 tunnel；底层 `SSHTunnelManager` 在 visionOS 使用 stub，避免链接 Citadel / swift-nio-ssh
+  - [x] visionOS 首版暂不链接 MarkdownUI：聊天和 Markdown 文件预览先走系统 `Text` / raw text 渲染；iOS/iPadOS 继续使用 MarkdownUI 与 workspace image provider
+  - [x] 兼容 visionOS API：将 `scrollDismissesKeyboard(.immediately)` 包装为平台条件修饰符，visionOS 下跳过该 unavailable modifier
+  - [x] 验证：`xcodebuild -project "OpenCodeClient.xcodeproj" -target "OpenCodeClientVision" -configuration Debug -sdk xrsimulator CODE_SIGNING_ALLOWED=NO build` 通过
+  - [ ] 后续：单独修复 MarkdownUI / NetworkImage 在 visionOS target 下的依赖构建问题，再恢复 Markdown preview
 
 - [x] **默认模型切换到 GPT-5.5（2026-04-28）**：
   - [x] 默认发送模型从 DeepSeek 切换为 `openai/gpt-5.5`
