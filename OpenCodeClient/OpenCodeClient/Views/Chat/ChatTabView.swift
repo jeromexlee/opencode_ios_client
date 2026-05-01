@@ -505,7 +505,10 @@ struct ChatTabView: View {
                             placeholder: L10n.t(.chatInputPlaceholder),
                             onSubmit: sendCurrentInput
                         )
-                        .frame(minHeight: 32, maxHeight: 100)
+                        .frame(
+                            minHeight: DesignControls.composerTextMinHeight,
+                            maxHeight: DesignControls.composerTextMaxHeight
+                        )
                         .accessibilityIdentifier("chat-input")
 
                         if inputText.isEmpty {
@@ -578,18 +581,25 @@ struct ChatTabView: View {
                             } label: {
                                 Image(systemName: "stop.fill")
                                     .font(DesignControls.composerActionIconFont.bold())
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Color.red)
                                     .frame(width: DesignControls.composerActionButtonSize, height: DesignControls.composerActionButtonSize)
                                     .background {
                                         RoundedRectangle(cornerRadius: DesignCorners.medium)
-                                            .fill(Color.red)
+                                            .fill(Color.red.opacity(DesignColors.Opacity.recordingActionFill))
                                     }
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: DesignCorners.medium)
+                                            .stroke(
+                                                Color.red.opacity(DesignColors.Opacity.recordingActionBorder),
+                                                lineWidth: 1.5
+                                            )
+                                    )
                             }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.horizontal, DesignControls.composerContainerHorizontalPadding)
+                .padding(.vertical, DesignControls.composerContainerVerticalPadding)
                 .background(.bar)
             }
             .navigationTitle(state.currentSession?.title ?? L10n.t(.appChat))

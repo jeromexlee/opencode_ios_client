@@ -164,11 +164,23 @@ enum DesignControls {
     static let composerActionButtonSize: CGFloat = 48
     static let composerActionButtonSpacing: CGFloat = DesignSpacing.md
     static let composerActionIconFont: Font = .title3
+    static let composerContainerHorizontalPadding: CGFloat = 32
+    static let composerContainerVerticalPadding: CGFloat = 20
+    static let composerTextMinHeight: CGFloat = 48
+    static let composerTextMaxHeight: CGFloat = 160
+    static let toolOpenFileIconFont: Font = .title3
+    static let toolOpenFileButtonSize: CGFloat = 44
     #else
     /// Compact chat composer action buttons for iPhone and iPad.
     static let composerActionButtonSize: CGFloat = 32
     static let composerActionButtonSpacing: CGFloat = DesignSpacing.sm
     static let composerActionIconFont: Font = .callout
+    static let composerContainerHorizontalPadding: CGFloat = 16
+    static let composerContainerVerticalPadding: CGFloat = 10
+    static let composerTextMinHeight: CGFloat = 32
+    static let composerTextMaxHeight: CGFloat = 100
+    static let toolOpenFileIconFont: Font = DesignTypography.micro
+    static let toolOpenFileButtonSize: CGFloat = 24
     #endif
 }
 
