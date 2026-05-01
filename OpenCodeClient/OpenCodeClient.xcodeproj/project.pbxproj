@@ -244,8 +244,8 @@
 			mainGroup = 3B4F43F92F3E642500A4CD74;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				AA000003AAAAAAAA00000003 /* XCLocalSwiftPackageReference "../third_party/swift-markdown-ui" */,
-				AA000006AAAAAAAA00000006 /* XCLocalSwiftPackageReference "../third_party/NetworkImage" */,
+				AA000003AAAAAAAA00000003 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+				AA000006AAAAAAAA00000006 /* XCRemoteSwiftPackageReference "NetworkImage" */,
 				3B4F45982F3FB16A00A4CD74 /* XCRemoteSwiftPackageReference "Citadel" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -736,17 +736,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		AA000003AAAAAAAA00000003 /* XCLocalSwiftPackageReference "../third_party/swift-markdown-ui" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "../third_party/swift-markdown-ui";
-		};
-		AA000006AAAAAAAA00000006 /* XCLocalSwiftPackageReference "../third_party/NetworkImage" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../third_party/NetworkImage;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		3B4F45982F3FB16A00A4CD74 /* XCRemoteSwiftPackageReference "Citadel" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -754,6 +743,22 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.12.0;
+			};
+		};
+		AA000003AAAAAAAA00000003 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/grapeot/swift-markdown-ui";
+			requirement = {
+				kind = exactVersion;
+				version = "2.4.1-visionos.1";
+			};
+		};
+		AA000006AAAAAAAA00000006 /* XCRemoteSwiftPackageReference "NetworkImage" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/grapeot/NetworkImage";
+			requirement = {
+				kind = exactVersion;
+				version = "6.0.1-visionos.1";
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -766,12 +771,12 @@
 		};
 		AA000002AAAAAAAA00000002 /* MarkdownUI */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AA000003AAAAAAAA00000003 /* XCLocalSwiftPackageReference "../third_party/swift-markdown-ui" */;
+			package = AA000003AAAAAAAA00000003 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
 		};
 		AA000005AAAAAAAA00000005 /* NetworkImage */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AA000006AAAAAAAA00000006 /* XCLocalSwiftPackageReference "../third_party/NetworkImage" */;
+			package = AA000006AAAAAAAA00000006 /* XCRemoteSwiftPackageReference "NetworkImage" */;
 			productName = NetworkImage;
 		};
 /* End XCSwiftPackageProductDependency section */
