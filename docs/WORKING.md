@@ -8,7 +8,7 @@
 - **分支**：`visionos`（from master）
 - **编译**：✅ `OpenCodeClientVision` xrsimulator build 通过
 - **测试**：✅ iOS build/test 回归验证通过
-- **Phase**：visionOS UI ergonomics 与 forked package migration
+- **Phase**：visionOS UI ergonomics、forked package migration 与 layered app icon
 
 ## 默认工作流约定
 
@@ -67,6 +67,14 @@ OPENCODE_SERVER_PASSWORD="restart_Web@" \
 - [ ] **Model 列表更新 — 删除 Opus/Sonnet，添加 DeepSeek（2026-04-23）**：删除 `anthropic/claude-opus-4-6` 和 `anthropic/claude-sonnet-4-6`，新增 `deepseek/deepseek-v4-pro`
 
 ## 已完成（近期）
+
+- [x] **visionOS layered app icon（2026-05-01）**：
+  - [x] 基于现有 `OpenCodeClient/Assets.xcassets/AppIcon.appiconset/AppIcon.png` 生成 visionOS 三层 icon：background / middle / foreground
+  - [x] 最终采用程序按原图颜色分层，而不是直接采用模型输出透明层；这样 composite preview 与原图逐像素一致，避免透明背景被模型画成棋盘格、或绿幕抠图留下彩边
+  - [x] 新增 `OpenCodeClientVisionAssets.xcassets/AppIcon.solidimagestack`，并只加入 `OpenCodeClientVision` target 的 Resources；共享 `OpenCodeClient/Assets.xcassets` 继续只保留 iOS `AppIcon`
+  - [x] visionOS app icon catalog 使用 Xcode 生成的 `.solidimagestack` / `.solidimagestacklayer` 结构；每层 `Content.imageset` 使用 `idiom: vision`、`scale: 2x`，并指向 1024×1024 PNG
+  - [x] `OpenCodeClient` 与 `OpenCodeClientVision` target 都使用 `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`；由于两个 target 引用不同 asset catalog，iOS 使用 flat `AppIcon.appiconset`，visionOS 使用 `AppIcon.solidimagestack`
+  - [x] 验证：`OpenCodeClient` iphonesimulator build 通过；`OpenCodeClientVision` xrsimulator build 通过；`assetutil --info` 确认编译后的 `Assets.car` 里存在 `SolidImageStack`，名字为 `AppIcon`，三层分别为 Back / Middle / Front
 
 - [x] **visionOS 输入区交互尺寸与窗口默认大小（2026-05-01）**：
   - [x] 录音按钮 active 状态改为红色 icon + 红色 tint 背景/描边，避免 visionOS glass/material compositing 把原来的纯红背景洗成白色
