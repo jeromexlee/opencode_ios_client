@@ -6,9 +6,9 @@
 
 - **最后更新**：2026-05-02
 - **分支**：`visionos`（from master）
-- **编译**：✅ `OpenCodeClientVision` xrsimulator build 通过
+- **编译**：✅ unified `OpenCodeClient` visionOS Simulator build 通过
 - **测试**：✅ iOS build/test 回归验证通过
-- **Phase**：visionOS speech transcription failure recovery
+- **Phase**：Voiceflow-style unified iOS + visionOS app target
 
 ## 默认工作流约定
 
@@ -67,6 +67,18 @@ OPENCODE_SERVER_PASSWORD="restart_Web@" \
 - [ ] **Model 列表更新 — 删除 Opus/Sonnet，添加 DeepSeek（2026-04-23）**：删除 `anthropic/claude-opus-4-6` 和 `anthropic/claude-sonnet-4-6`，新增 `deepseek/deepseek-v4-pro`
 
 ## 已完成（近期）
+
+- [x] **Voiceflow-style 单 app target 迁移起步（2026-05-02）**：
+  - [x] 对照 `adhoc_jobs/brainwave_mobile/brainwave_ios` 的 Voiceflow 配置，确认它不是独立 visionOS app target，而是主 app target 同时支持 `iphoneos iphonesimulator xros xrsimulator`，`TARGETED_DEVICE_FAMILY = "1,2,7"`，并保持同一个 bundle id
+  - [x] 将 `OpenCodeClient` 主 target 改为支持 iPhone / iPad / Apple Vision：新增 `SUPPORTED_PLATFORMS = "iphoneos iphonesimulator xros xrsimulator"`、`TARGETED_DEVICE_FAMILY = "1,2,7"`、`XROS_DEPLOYMENT_TARGET = 26.0`、`SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO`
+  - [x] 起初将 `OpenCodeClientVisionAssets.xcassets` 接入主 target resources，使主 target 的 visionOS build 能复用现有 layered app icon；验证通过后继续收敛到主 asset catalog
+  - [x] `Citadel` / SSH tunnel 依赖保留在主 target，但通过 build phase `platformFilters = (ios, )` 限制为 iOS-only，避免 native visionOS build 继续拉起 `swift-nio-ssh`；visionOS 运行时仍走现有 `#if os(visionOS)` stub，Settings 中隐藏 SSH Tunnel
+  - [x] 验证：`xcodebuild -showdestinations -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient"` 已显示 native `platform:visionOS` / `platform:visionOS Simulator` destinations；`xcodebuild build -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'platform=visionOS Simulator,id=FBB8C85C-5EC8-40CC-B2CF-DAEC86BA530B' CODE_SIGNING_ALLOWED=NO` 通过；`xcodebuild test -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'platform=iOS Simulator,id=302F88CA-C2D3-4DC0-8E12-B3ED82D5A3C8' CODE_SIGNING_ALLOWED=NO` 通过
+
+- [x] **旧 `OpenCodeClientVision` target 删除（2026-05-02）**：
+  - [x] 删除独立 `OpenCodeClientVision` app target、product、build phases、build settings 和 shared scheme，项目只保留 `OpenCodeClient` 一个 app target
+  - [x] 删除独立 `OpenCodeClientVisionAssets.xcassets`，将 `AppIcon.solidimagestack` 移入主 `OpenCodeClient/Assets.xcassets`，让 iOS flat icon 和 visionOS layered icon 都归属于同一个 app target 的 asset catalog
+  - [x] README 构建说明改为单一 `OpenCodeClient` scheme：iPhone、iPad、Apple Vision Pro 都从同一个 scheme 和 bundle identifier 分发
 
 - [x] **Speech recognition 失败时保留 partial transcript（2026-05-02）**：
   - [x] 根因：`ChatTabView.toggleRecording()` 在 transcription catch 路径中把 `inputText` 回滚到录音前的 `prefix`；当 AI Builders realtime WebSocket 已经流式返回 partial transcript 后再报错时，用户已经看到的文本会被覆盖掉，空 prefix 场景表现为输入框被清空
