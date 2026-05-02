@@ -418,7 +418,7 @@ final class AppState {
         ModelPreset(displayName: "GLM-5-turbo", providerID: "zai-coding-plan", modelID: "glm-5-turbo"),
         ModelPreset(displayName: "GPT-5.5", providerID: "openai", modelID: "gpt-5.5"),
         ModelPreset(displayName: "GPT-5.3 Codex", providerID: "openai", modelID: "gpt-5.3-codex"),
-        ModelPreset(displayName: "DeepSeek", providerID: "deepseek", modelID: "deepseek-v4-pro"),
+        ModelPreset(displayName: "DeepSeek", providerID: "deepseek", modelID: "deepseek-v4-flash"),
     ]
     var selectedModelIndex: Int = 1
     

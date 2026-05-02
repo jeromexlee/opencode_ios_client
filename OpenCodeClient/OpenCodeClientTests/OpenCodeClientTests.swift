@@ -1573,7 +1573,7 @@ struct AgentInfoTests {
 struct ModelPresetShortNameTests {
     
     @Test func deepseekShortName() {
-        let preset = ModelPreset(displayName: "DeepSeek", providerID: "deepseek", modelID: "deepseek-v4-pro")
+        let preset = ModelPreset(displayName: "DeepSeek", providerID: "deepseek", modelID: "deepseek-v4-flash")
         #expect(preset.shortName == "DeepSeek")
     }
     
