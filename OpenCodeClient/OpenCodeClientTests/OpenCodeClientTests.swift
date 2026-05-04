@@ -711,6 +711,55 @@ struct WorkspaceMarkdownImageProviderTests {
             ) == "docs/assets/chart.png"
         )
     }
+
+    @Test func workspaceRelativePathReturnsNilForHTTPSURL() {
+        let url = URL(string: "https://upload.wikimedia.org/wikipedia/commons/0/05/Yonghe_Temple_entrance.jpg")
+        #expect(WorkspaceMarkdownImageProvider.workspaceRelativePath(from: url) == nil)
+    }
+
+    @Test func workspaceRelativePathReturnsNilForHTTPURL() {
+        let url = URL(string: "http://example.com/image.png")
+        #expect(WorkspaceMarkdownImageProvider.workspaceRelativePath(from: url) == nil)
+    }
+
+    @Test func decodeDataURLReturnsNilForHTTPSURL() {
+        let url = URL(string: "https://example.com/image.png")
+        #expect(WorkspaceMarkdownImageProvider.decodeDataURL(url) == nil)
+    }
+}
+
+struct MarkdownPreviewViewTests {
+
+    @Test func normalizeStandaloneImageBlocksSeparatesCaption() {
+        let markdown = """
+        ![雍和宫入口](https://example.com/yonghe.jpg)
+        *图注文字*
+        """
+
+        let normalized = MarkdownPreviewView.normalizeStandaloneImageBlocks(markdown)
+
+        #expect(normalized == """
+        ![雍和宫入口](https://example.com/yonghe.jpg)
+
+        *图注文字*
+        """)
+    }
+
+    @Test func normalizeStandaloneImageBlocksLeavesExistingBlankLine() {
+        let markdown = """
+        ![chart](assets/chart.png)
+
+        Caption
+        """
+
+        #expect(MarkdownPreviewView.normalizeStandaloneImageBlocks(markdown) == markdown)
+    }
+
+    @Test func normalizeStandaloneImageBlocksDoesNotChangeInlineImageText() {
+        let markdown = "Before ![inline](assets/icon.png) after"
+
+        #expect(MarkdownPreviewView.normalizeStandaloneImageBlocks(markdown) == markdown)
+    }
 }
 
 // MARK: - PartStateBridge Tests
