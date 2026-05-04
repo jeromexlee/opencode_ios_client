@@ -711,6 +711,21 @@ struct WorkspaceMarkdownImageProviderTests {
             ) == "docs/assets/chart.png"
         )
     }
+
+    @Test func workspaceRelativePathReturnsNilForHTTPSURL() {
+        let url = URL(string: "https://upload.wikimedia.org/wikipedia/commons/0/05/Yonghe_Temple_entrance.jpg")
+        #expect(WorkspaceMarkdownImageProvider.workspaceRelativePath(from: url) == nil)
+    }
+
+    @Test func workspaceRelativePathReturnsNilForHTTPURL() {
+        let url = URL(string: "http://example.com/image.png")
+        #expect(WorkspaceMarkdownImageProvider.workspaceRelativePath(from: url) == nil)
+    }
+
+    @Test func decodeDataURLReturnsNilForHTTPSURL() {
+        let url = URL(string: "https://example.com/image.png")
+        #expect(WorkspaceMarkdownImageProvider.decodeDataURL(url) == nil)
+    }
 }
 
 // MARK: - PartStateBridge Tests

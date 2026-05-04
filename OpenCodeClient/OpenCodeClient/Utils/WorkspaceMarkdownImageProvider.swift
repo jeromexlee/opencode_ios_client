@@ -194,29 +194,42 @@ private struct WorkspaceMarkdownImageView: View {
             guard !didAttemptLoad else { return }
             didAttemptLoad = true
 
+            // 1. Data URI (base64 inline)
             if let data = WorkspaceMarkdownImageProvider.decodeDataURL(url) {
                 imageData = data
                 return
             }
 
-            guard let path = WorkspaceMarkdownImageProvider.workspaceRelativePath(from: url, workspaceDirectory: workspaceDirectory) else {
-                if let url {
-                    print("[WorkspaceMarkdownImageProvider] unsupported image url=\(url.absoluteString)")
+            // 2. Workspace-relative file (via OpenCode server API)
+            if let path = WorkspaceMarkdownImageProvider.workspaceRelativePath(from: url, workspaceDirectory: workspaceDirectory) {
+                do {
+                    print("[WorkspaceMarkdownImageProvider] load local image path=\(path)")
+                    let content = try await loadFileContent(path)
+                    guard let data = WorkspaceMarkdownImageProvider.decodeBase64ImageData(content.content) else {
+                        print("[WorkspaceMarkdownImageProvider] failed to decode image path=\(path) type=\(content.type)")
+                        return
+                    }
+                    imageData = data
+                    print("[WorkspaceMarkdownImageProvider] loaded local image path=\(path) bytes=\(data.count)")
+                } catch {
+                    print("[WorkspaceMarkdownImageProvider] failed to load local image path=\(path) error=\(error.localizedDescription)")
                 }
                 return
             }
 
-            do {
-                print("[WorkspaceMarkdownImageProvider] load local image path=\(path)")
-                let content = try await loadFileContent(path)
-                guard let data = WorkspaceMarkdownImageProvider.decodeBase64ImageData(content.content) else {
-                    print("[WorkspaceMarkdownImageProvider] failed to decode image path=\(path) type=\(content.type)")
-                    return
+            // 3. Remote URL (download directly via URLSession, bypass server base64)
+            if let url, let scheme = url.scheme, (scheme == "http" || scheme == "https") {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    if UIImage(data: data) != nil {
+                        imageData = data
+                        print("[WorkspaceMarkdownImageProvider] downloaded remote image url=\(url.absoluteString) bytes=\(data.count)")
+                    } else {
+                        print("[WorkspaceMarkdownImageProvider] downloaded data is not a valid image url=\(url.absoluteString)")
+                    }
+                } catch {
+                    print("[WorkspaceMarkdownImageProvider] failed to download remote image url=\(url.absoluteString) error=\(error.localizedDescription)")
                 }
-                imageData = data
-                print("[WorkspaceMarkdownImageProvider] loaded local image path=\(path) bytes=\(data.count)")
-            } catch {
-                print("[WorkspaceMarkdownImageProvider] failed to load local image path=\(path) error=\(error.localizedDescription)")
             }
         }
     }
