@@ -728,6 +728,40 @@ struct WorkspaceMarkdownImageProviderTests {
     }
 }
 
+struct MarkdownPreviewViewTests {
+
+    @Test func normalizeStandaloneImageBlocksSeparatesCaption() {
+        let markdown = """
+        ![雍和宫入口](https://example.com/yonghe.jpg)
+        *图注文字*
+        """
+
+        let normalized = MarkdownPreviewView.normalizeStandaloneImageBlocks(markdown)
+
+        #expect(normalized == """
+        ![雍和宫入口](https://example.com/yonghe.jpg)
+
+        *图注文字*
+        """)
+    }
+
+    @Test func normalizeStandaloneImageBlocksLeavesExistingBlankLine() {
+        let markdown = """
+        ![chart](assets/chart.png)
+
+        Caption
+        """
+
+        #expect(MarkdownPreviewView.normalizeStandaloneImageBlocks(markdown) == markdown)
+    }
+
+    @Test func normalizeStandaloneImageBlocksDoesNotChangeInlineImageText() {
+        let markdown = "Before ![inline](assets/icon.png) after"
+
+        #expect(MarkdownPreviewView.normalizeStandaloneImageBlocks(markdown) == markdown)
+    }
+}
+
 // MARK: - PartStateBridge Tests
 
 struct PartStateBridgeTests {

@@ -221,7 +221,39 @@ struct MarkdownPreviewView: View {
         return maxLine > Self.maxLineLength
     }
 
+    static func normalizeStandaloneImageBlocks(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n")
+        guard lines.count > 1 else { return text }
+
+        var normalized: [String] = []
+        normalized.reserveCapacity(lines.count)
+
+        for index in lines.indices {
+            let line = lines[index]
+            normalized.append(line)
+
+            guard isStandaloneMarkdownImageLine(line) else { continue }
+            guard index + 1 < lines.count else { continue }
+
+            let nextLine = lines[index + 1]
+            if !nextLine.trimmingCharacters(in: .whitespaces).isEmpty {
+                normalized.append("")
+            }
+        }
+
+        return normalized.joined(separator: "\n")
+    }
+
+    private static func isStandaloneMarkdownImageLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("!["), trimmed.hasSuffix(")") else { return false }
+        guard let closeAlt = trimmed.firstIndex(of: "]") else { return false }
+        let afterAlt = trimmed[trimmed.index(after: closeAlt)...]
+        return afterAlt.hasPrefix("(") && !afterAlt.dropFirst().isEmpty
+    }
+
     var body: some View {
+        let previewText = Self.normalizeStandaloneImageBlocks(text)
         ScrollView {
             Group {
                 if useRawTextFallback {
@@ -230,7 +262,7 @@ struct MarkdownPreviewView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Markdown(
-                        text,
+                        previewText,
                         imageBaseURL: WorkspaceMarkdownImageProvider.imageBaseURL(markdownFilePath: markdownFilePath)
                     )
                         .markdownImageProvider(
