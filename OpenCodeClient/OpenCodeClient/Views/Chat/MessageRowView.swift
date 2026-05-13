@@ -26,6 +26,11 @@ struct MessageRowView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selectedPreviewImage: MessagePreviewImage?
 
+    // MarkdownUI is unstable on very large transcript-like blobs in chat.
+    // Prefer raw text once content is large enough to risk crashing the message list.
+    static let markdownMaxLineLength = 1500
+    static let markdownMaxTotalLength = 20_000
+
     private var cardGridColumnCount: Int { sizeClass == .regular ? 3 : 2 }
     private var cardGridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 10), count: cardGridColumnCount)
@@ -79,8 +84,13 @@ struct MessageRowView: View {
     @ViewBuilder
     private func markdownText(_ text: String) -> some View {
         if shouldRenderMarkdown(text) {
-            ResolvedMarkdownView(text: text, state: state, workspaceDirectory: workspaceDirectory)
-                .textSelection(.enabled)
+            if Self.useRawTextFallbackForMarkdown(text) {
+                Text(text)
+                    .textSelection(.enabled)
+            } else {
+                ResolvedMarkdownView(text: text, state: state, workspaceDirectory: workspaceDirectory)
+                    .textSelection(.enabled)
+            }
         } else {
             Text(text)
                 .textSelection(.enabled)
@@ -109,14 +119,31 @@ struct MessageRowView: View {
         Self.hasMarkdownSyntax(text)
     }
 
+    static func useRawTextFallbackForMarkdown(_ text: String) -> Bool {
+        if text.count > markdownMaxTotalLength { return true }
+        let maxLine = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map(\.count).max() ?? 0
+        return maxLine > markdownMaxLineLength
+    }
+
     private var userTextParts: [Part] {
         message.parts.filter {
-            $0.isText && !($0.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            $0.isText &&
+            !$0.isSynthetic &&
+            !($0.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         }
     }
 
     private var userImageParts: [Part] {
         message.parts.filter { $0.isImageFile }
+    }
+
+    private var userContextParts: [Part] {
+        let syntheticParts = message.parts.filter { $0.isSynthetic && ($0.isText || $0.isFile) }
+        if !syntheticParts.isEmpty {
+            return syntheticParts
+        }
+        return message.parts.filter { $0.isFile && !$0.isImageFile }
     }
 
     static func hasMarkdownSyntax(_ text: String) -> Bool {
@@ -198,6 +225,18 @@ struct MessageRowView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
 
+            if !userContextParts.isEmpty {
+                LazyVGrid(
+                    columns: cardGridColumns,
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    ForEach(userContextParts, id: \.id) { part in
+                        contextCardView(part)
+                    }
+                }
+            }
+
             HStack {
                 if let model = message.info.resolvedModel {
                     Text("\(model.providerID)/\(model.modelID)")
@@ -223,6 +262,20 @@ struct MessageRowView: View {
                 }
             }
             .padding(.leading, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func contextCardView(_ part: Part) -> some View {
+        if part.isSynthetic {
+            ToolPartView(
+                part: part,
+                sessionTodos: sessionTodos,
+                workspaceDirectory: workspaceDirectory,
+                onOpenResolvedPath: onOpenResolvedPath
+            )
+        } else {
+            ContextFileCardView(part: part)
         }
     }
 
@@ -284,6 +337,40 @@ struct MessageRowView: View {
         } else {
             EmptyView()
         }
+    }
+}
+
+private struct ContextFileCardView: View {
+    let part: Part
+
+    private var displayName: String {
+        part.filename ?? part.url ?? "Context file"
+    }
+
+    var body: some View {
+        let accent = Color.secondary
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text")
+                .foregroundStyle(accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Attached Context")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text(displayName)
+                    .font(.caption)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.secondary.opacity(0.06))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 

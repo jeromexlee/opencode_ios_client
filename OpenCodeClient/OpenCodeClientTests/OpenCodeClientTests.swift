@@ -160,6 +160,55 @@ struct OpenCodeClientTests {
         #expect(attachment.dataURL == "data:image/png;base64,AQID")
     }
 
+    @Test func largeMarkdownChatMessagesUseRawTextFallback() {
+        let text = String(repeating: "# Heading\n", count: 2500)
+        #expect(MessageRowView.useRawTextFallbackForMarkdown(text) == true)
+    }
+
+    @Test func shortMarkdownChatMessagesStillUseMarkdownRenderer() {
+        let text = """
+        # Title
+
+        - one
+        - two
+        """
+        #expect(MessageRowView.useRawTextFallbackForMarkdown(text) == false)
+    }
+
+    @Test func partDecodesSyntheticToolCallHelpers() throws {
+        let json = #"""
+        {
+          "id":"p1",
+          "messageID":"m1",
+          "sessionID":"s1",
+          "type":"text",
+          "synthetic":true,
+          "text":"Called the Read tool with the following input: {\"filePath\":\"/tmp/note.md\"}"
+        }
+        """#
+        let part = try JSONDecoder().decode(Part.self, from: Data(json.utf8))
+        #expect(part.isSynthetic == true)
+        #expect(part.syntheticToolName == "Read")
+        #expect(part.syntheticToolInputSummary?.contains("/tmp/note.md") == true)
+    }
+
+    @Test func partDecodesSyntheticTaggedContentHelpers() throws {
+        let json = #"""
+        {
+          "id":"p2",
+          "messageID":"m1",
+          "sessionID":"s1",
+          "type":"text",
+          "synthetic":true,
+          "text":"<path>/tmp/note.md</path>\n<type>file</type>\n<content>\nhello\nworld\n</content>"
+        }
+        """#
+        let part = try JSONDecoder().decode(Part.self, from: Data(json.utf8))
+        #expect(part.syntheticTaggedContent?.path == "/tmp/note.md")
+        #expect(part.syntheticTaggedContent?.kind == "file")
+        #expect(part.syntheticTaggedContent?.content == "hello\nworld")
+    }
+
     @Test func filePartDecodingForImage() throws {
         let json = """
         {

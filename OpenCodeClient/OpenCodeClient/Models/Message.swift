@@ -229,6 +229,7 @@ struct Part: Codable, Identifiable {
     let sessionID: String
     let type: String
     let text: String?
+    let synthetic: Bool?
     let mime: String?
     let url: String?
     let filename: String?
@@ -246,6 +247,7 @@ struct Part: Codable, Identifiable {
     var toolInputSummary: String? { state?.inputSummary }
     /// 输出结果
     var toolOutput: String? { state?.output }
+    var isSynthetic: Bool { synthetic == true }
 
     var toolTodos: [TodoItem] {
         if let t = metadata?.todos, !t.isEmpty { return t }
@@ -347,10 +349,66 @@ struct Part: Codable, Identifiable {
         if let p = state?.pathFromInput.map({ PathNormalizer.normalize($0) }), !p.isEmpty, !out.contains(p) {
             out.append(p)
         }
+        if let p = syntheticTaggedContent?.path.map({ PathNormalizer.normalize($0) }), !p.isEmpty, !out.contains(p) {
+            out.append(p)
+        }
+        if let p = syntheticReadPath.map({ PathNormalizer.normalize($0) }), !p.isEmpty, !out.contains(p) {
+            out.append(p)
+        }
         return out
     }
     var isStepStart: Bool { type == "step-start" }
     var isStepFinish: Bool { type == "step-finish" }
+
+    struct SyntheticTaggedContent {
+        let path: String?
+        let kind: String?
+        let content: String
+    }
+
+    var syntheticToolName: String? {
+        guard isSynthetic, let text else { return nil }
+        let prefix = "Called the "
+        let suffix = " tool with the following input:"
+        guard text.hasPrefix(prefix), let range = text.range(of: suffix) else { return nil }
+        let name = String(text[text.index(text.startIndex, offsetBy: prefix.count)..<range.lowerBound])
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var syntheticToolInputSummary: String? {
+        guard isSynthetic, let text, let range = text.range(of: "input:") else { return nil }
+        let raw = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? nil : raw
+    }
+
+    var syntheticReadPath: String? {
+        guard let raw = syntheticToolInputSummary else { return nil }
+        guard let data = raw.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        let path = obj["filePath"] as? String
+        let trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false) ? trimmed : nil
+    }
+
+    var syntheticTaggedContent: SyntheticTaggedContent? {
+        guard isSynthetic, let text else { return nil }
+        guard let content = Self.extractTaggedValue("content", in: text) else { return nil }
+        let path = Self.extractTaggedValue("path", in: text)
+        let kind = Self.extractTaggedValue("type", in: text)
+        return SyntheticTaggedContent(path: path, kind: kind, content: content)
+    }
+
+    private static func extractTaggedValue(_ tag: String, in text: String) -> String? {
+        guard let start = text.range(of: "<\(tag)>"),
+              let end = text.range(of: "</\(tag)>"),
+              start.upperBound <= end.lowerBound else { return nil }
+        let raw = String(text[start.upperBound..<end.lowerBound])
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
     private static func dataURLPayload(from url: String) -> Data? {
         guard let marker = url.range(of: ";base64,") else { return nil }
