@@ -101,8 +101,13 @@ struct SettingsTabView: View {
                         .textContentType(.password)
 
                     if let scheme = info.scheme {
-                        let shouldWarnInsecureHTTP = scheme == "http" && !sshConfig.isEnabled && !info.isTailscale
-                        let showSchemeInfo = scheme == "http" && !sshConfig.isEnabled
+                        #if os(visionOS)
+                        let isSSHTunnelEnabled = false
+                        #else
+                        let isSSHTunnelEnabled = sshConfig.isEnabled
+                        #endif
+                        let shouldWarnInsecureHTTP = scheme == "http" && !isSSHTunnelEnabled && !info.isTailscale
+                        let showSchemeInfo = scheme == "http" && !isSSHTunnelEnabled
                         HStack(spacing: 4) {
                             LabeledContent(L10n.t(.settingsScheme), value: scheme.uppercased())
                                 .foregroundStyle(shouldWarnInsecureHTTP ? .red : .secondary)
@@ -119,10 +124,10 @@ struct SettingsTabView: View {
                         Spacer()
                         if state.isConnected {
                             Label(L10n.t(.settingsConnected), systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(DesignColors.Semantic.success)
                         } else {
                             Label(L10n.t(.settingsDisconnected), systemImage: "xmark.circle.fill")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(DesignColors.Semantic.error)
                         }
                     }
 
@@ -172,6 +177,7 @@ struct SettingsTabView: View {
                     }
                 }
 
+                #if !os(visionOS)
                 Section {
                     Toggle(L10n.t(.settingsEnableSshTunnel), isOn: $sshConfig.isEnabled)
                         .onChange(of: sshConfig.isEnabled) { _, newValue in
@@ -259,7 +265,7 @@ struct SettingsTabView: View {
                                 }
                             case .connected:
                                 Label(L10n.t(.settingsConnected), systemImage: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(DesignColors.Semantic.success)
                             case .error(let msg):
                                 Text(msg)
                                     .foregroundStyle(.red)
@@ -339,6 +345,7 @@ struct SettingsTabView: View {
                     Text(L10n.t(.settingsSshTunnelHelp))
                         .font(.caption)
                 }
+                #endif
 
                 Section(L10n.t(.settingsAppearance)) {
                     Picker(L10n.t(.settingsTheme), selection: $state.themePreference) {
@@ -386,7 +393,7 @@ struct SettingsTabView: View {
                         Spacer()
                         if state.aiBuilderConnectionOK {
                             Label(L10n.t(.commonOk), systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
+                                .foregroundStyle(DesignColors.Semantic.success)
                         } else if let err = state.aiBuilderConnectionError {
                             Text(err)
                                 .foregroundStyle(.red)
@@ -401,9 +408,11 @@ struct SettingsTabView: View {
             }
             .navigationTitle(L10n.t(.settingsTitle))
             .onAppear {
+                #if !os(visionOS)
                 sshConfig = state.sshTunnelManager.config
                 _ = try? state.sshTunnelManager.generateOrGetPublicKey()
                 reconnectSSHTunnelIfNeeded(force: false)
+                #endif
             }
             .sheet(isPresented: $showPublicKeySheet) {
                 PublicKeySheet(

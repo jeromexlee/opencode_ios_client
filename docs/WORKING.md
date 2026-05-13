@@ -4,16 +4,208 @@
 
 ## 当前状态
 
-- **最后更新**：2026-03-27
-- **Phase**：Phase 3 完成 + iPhone 左缘右滑打开 Session List
-- **编译**：✅ 通过（iphonesimulator / generic destination）
-- **测试**：⚠️ 新增手势逻辑单元测试通过；`xcodebuild test` 下现有 session list UI smoke 在当前 simulator 环境未稳定通过
+- **最后更新**：2026-05-03
+- **分支**：`visionos`（from master）
+- **编译**：✅ unified `OpenCodeClient` visionOS Simulator build 通过
+- **测试**：✅ iOS build/test 回归验证通过
+- **Phase**：Voiceflow-style unified iOS + visionOS app target
+
+## 默认工作流约定
+
+### "用最新的 code 编译" 的默认语义
+
+在这个项目里，这句话默认**不是**指直接拿远端最新代码原地编译。
+
+默认含义是：
+
+1. 进入 `adhoc_jobs/opencode_ios_client/opencode-official`
+2. `fetch origin`，获取最新 `origin/dev`
+3. 在**保留当前本地提交**的前提下，把当前本地集成分支 rebase 到最新 `origin/dev` 之上
+4. 用 rebase 后的 server 代码继续编译、测试、部署 iOS client / server 联调环境
+
+这条约定的目标是固定一种工作语义：**最新代码 = 最新上游 `origin/dev` + 当前本地补丁栈**。
+
+这里的“本地提交”专指：当前分支上**已经提交**、但还没有集成到最新 `origin/dev` 之上的那些提交；**不包含** working tree 里的未提交改动。
+
+只有当需求明确说明“不要本地提交，只编译纯上游最新代码”时，才跳过 rebase，直接基于干净的 `origin/dev` 工作。
+
+### 为什么这样约定
+
+- `opencode-official` 当前可验证的主线是 `dev` / `origin/dev`，不是 `master`
+- 本地通常会有一组尚未上游化的 patch；直接编译纯上游会丢掉这些行为差异
+- 先 rebase 再编译，能更早暴露上游变更与本地 patch 的冲突，而不是把问题留到更后面
+
+### 执行边界
+
+- 这是一个**保留本地提交**的集成工作流，不是“强制重置到远端”
+- 如果 rebase 出现冲突或失败，默认先暂停并确认处理方式，不继续进入编译/部署阶段
+- 如果只是做只读调研、API 对照或回归定位，不默认触发这条工作流
+
+### Success criteria
+
+- 成功标准不只是“编译产出了 binary”，还包括**运行路径正确**
+- 在 `knowledge_working` 下启动 OpenCode 时，所执行的必须是这次 workflow 产出的最新 binary，而不是之前遗留在磁盘上的旧 binary
+- 对当前工作流来说，只有当下面这类命令实际启动的是刚刚 rebase + build 得到的 binary，才算完成闭环验证：
+
+```bash
+OPENCODE_DB_PATH="$HOME/.local/share/opencode/opencode.db" \
+OPENCODE_SERVER_PASSWORD="restart_Web@" \
+/Users/grapeot/co/knowledge_working/adhoc_jobs/opencode_ios_client/opencode-official/packages/opencode/dist/opencode-darwin-arm64/bin/opencode web --hostname 0.0.0.0
+```
+
+- 如果该命令仍然指向旧构建产物，或无法证明它对应的是本轮 rebase 后的新 binary，则这次“用最新的 code 编译”不能算完成
+
+### 运行验证边界
+
+- 如果用户当前正在活跃使用 OpenCode，尤其已经有一个 `4096` 端口上的 server 在服务中，**不要**为了验证新 binary 去 kill、restart、或接管这个 live process
+- 这种场景下，默认跳过会干扰现有使用的 runtime 验证步骤
+- 如果仍然需要运行时验证，应使用单独的临时进程/临时端口完成，并且只管理自己新启动的那条验证进程，不触碰用户现有的 `4096` 进程
 
 ## 进行中
 
-（无）
+- [ ] **PR 合并** — `design-redesign` 分支所有改动已完成并通过测试，待创建 PR 合并到 master
+- [ ] **Model 列表更新 — 删除 Opus/Sonnet，添加 DeepSeek（2026-04-23）**：删除 `anthropic/claude-opus-4-6` 和 `anthropic/claude-sonnet-4-6`，新增 `deepseek/deepseek-v4-pro`
 
 ## 已完成（近期）
+
+- [x] **Voiceflow-style 单 app target 迁移起步（2026-05-02）**：
+  - [x] 对照 `adhoc_jobs/brainwave_mobile/brainwave_ios` 的 Voiceflow 配置，确认它不是独立 visionOS app target，而是主 app target 同时支持 `iphoneos iphonesimulator xros xrsimulator`，`TARGETED_DEVICE_FAMILY = "1,2,7"`，并保持同一个 bundle id
+  - [x] 将 `OpenCodeClient` 主 target 改为支持 iPhone / iPad / Apple Vision：新增 `SUPPORTED_PLATFORMS = "iphoneos iphonesimulator xros xrsimulator"`、`TARGETED_DEVICE_FAMILY = "1,2,7"`、`XROS_DEPLOYMENT_TARGET = 26.0`、`SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO`
+  - [x] 起初将 `OpenCodeClientVisionAssets.xcassets` 接入主 target resources，使主 target 的 visionOS build 能复用现有 layered app icon；验证通过后继续收敛到主 asset catalog
+  - [x] `Citadel` / SSH tunnel 依赖保留在主 target，但通过 build phase `platformFilters = (ios, )` 限制为 iOS-only，避免 native visionOS build 继续拉起 `swift-nio-ssh`；visionOS 运行时仍走现有 `#if os(visionOS)` stub，Settings 中隐藏 SSH Tunnel
+  - [x] 验证：`xcodebuild -showdestinations -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient"` 已显示 native `platform:visionOS` / `platform:visionOS Simulator` destinations；`xcodebuild build -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'platform=visionOS Simulator,id=FBB8C85C-5EC8-40CC-B2CF-DAEC86BA530B' CODE_SIGNING_ALLOWED=NO` 通过；`xcodebuild test -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'platform=iOS Simulator,id=302F88CA-C2D3-4DC0-8E12-B3ED82D5A3C8' CODE_SIGNING_ALLOWED=NO` 通过
+
+- [x] **旧 `OpenCodeClientVision` target 删除（2026-05-02）**：
+  - [x] 删除独立 `OpenCodeClientVision` app target、product、build phases、build settings 和 shared scheme，项目只保留 `OpenCodeClient` 一个 app target
+  - [x] 删除独立 `OpenCodeClientVisionAssets.xcassets`，将 `AppIcon.solidimagestack` 移入主 `OpenCodeClient/Assets.xcassets`，让 iOS flat icon 和 visionOS layered icon 都归属于同一个 app target 的 asset catalog
+  - [x] README 构建说明改为单一 `OpenCodeClient` scheme：iPhone、iPad、Apple Vision Pro 都从同一个 scheme 和 bundle identifier 分发
+
+- [x] **Speech recognition 失败时保留 partial transcript（2026-05-02）**：
+  - [x] 根因：`ChatTabView.toggleRecording()` 在 transcription catch 路径中把 `inputText` 回滚到录音前的 `prefix`；当 AI Builders realtime WebSocket 已经流式返回 partial transcript 后再报错时，用户已经看到的文本会被覆盖掉，空 prefix 场景表现为输入框被清空
+  - [x] 修复：新增线程安全的 `SpeechPartialTranscriptBuffer`，partial callback 每次同步记录最后一版 transcript；失败时使用 `prefix + lastPartialTranscript` 恢复输入框，没有 partial 时保持原 prefix 行为
+  - [x] 测试：新增 `speechFailureInputPreservesLastPartialTranscript()` 与 `speechFailureInputFallsBackToPrefixWithoutPartialTranscript()`，覆盖失败恢复和无 partial fallback
+  - [x] 验证：`xcodebuild test -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'platform=iOS Simulator,id=302F88CA-C2D3-4DC0-8E12-B3ED82D5A3C8' CODE_SIGNING_ALLOWED=NO` 通过；`xcodebuild build -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClientVision" -destination 'platform=visionOS Simulator,id=FBB8C85C-5EC8-40CC-B2CF-DAEC86BA530B' CODE_SIGNING_ALLOWED=NO` 通过
+
+- [x] **visionOS layered app icon（2026-05-01）**：
+  - [x] 基于现有 `OpenCodeClient/Assets.xcassets/AppIcon.appiconset/AppIcon.png` 生成 visionOS 三层 icon：background / middle / foreground
+  - [x] 最终采用程序按原图颜色分层，而不是直接采用模型输出透明层；这样 composite preview 与原图逐像素一致，避免透明背景被模型画成棋盘格、或绿幕抠图留下彩边
+  - [x] 新增 `OpenCodeClientVisionAssets.xcassets/AppIcon.solidimagestack`，并只加入 `OpenCodeClientVision` target 的 Resources；共享 `OpenCodeClient/Assets.xcassets` 继续只保留 iOS `AppIcon`
+  - [x] visionOS app icon catalog 使用 Xcode 生成的 `.solidimagestack` / `.solidimagestacklayer` 结构；每层 `Content.imageset` 使用 `idiom: vision`、`scale: 2x`，并指向 1024×1024 PNG
+  - [x] `OpenCodeClient` 与 `OpenCodeClientVision` target 都使用 `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`；由于两个 target 引用不同 asset catalog，iOS 使用 flat `AppIcon.appiconset`，visionOS 使用 `AppIcon.solidimagestack`
+  - [x] 验证：`OpenCodeClient` iphonesimulator build 通过；`OpenCodeClientVision` xrsimulator build 通过；`assetutil --info` 确认编译后的 `Assets.car` 里存在 `SolidImageStack`，名字为 `AppIcon`，三层分别为 Back / Middle / Front
+
+- [x] **visionOS 输入区交互尺寸与窗口默认大小（2026-05-01）**：
+  - [x] 录音按钮 active 状态改为红色 icon + 红色 tint 背景/描边，避免 visionOS glass/material compositing 把原来的纯红背景洗成白色
+  - [x] composer 右侧 mic / send / stop 三个 action buttons 在 visionOS 上从 32pt 放大到 48pt，并把垂直间距放宽到 12pt，降低 gaze interaction 难度；iPhone/iPad 保持原 32pt 尺寸
+  - [x] stop 按钮在 AI busy 时改为与录音 active 态一致的红色 icon + tint 背景/描边，而不是纯红实心背景；这样在 visionOS glass/material 下更容易保持红色语义
+  - [x] composer 底部容器 padding 改为 design token：visionOS 使用 32pt horizontal / 20pt vertical，iPhone/iPad 保持 16pt / 10pt，避免右下角按钮贴近 Apple Vision Pro window resize handle
+  - [x] composer 输入框高度改为跨平台 token：visionOS 48–160pt，iPhone/iPad 32–100pt，避免大窗口里输入区仍按手机高度限制
+  - [x] tool-call header 右侧 open-file 图标在 visionOS 上放大为 44pt hit target + `title3` icon，方便用眼控/手势打开 patch/edit 详情文件；iPhone/iPad 保持 24pt 紧凑尺寸
+  - [x] visionOS split view 左侧 Workspace / Sessions sidebar 宽度调到 iPad 默认的 130%（`1.3 / 6.0`），最小宽度同步从 10% 提到 13%
+  - [x] `OpenCodeClientVision` 默认窗口尺寸设为 2304×1080，约为系统默认宽度的 180%、高度的 150%，减少首次打开后手动拉大窗口的需求
+  - [x] 后续根据实机观感把默认窗口调窄并略增高：宽度从 2304 降到 1382（约 60%），高度从 1080 增到 1188（约 110%）；再把宽度微调到 1500，高度保持 1188
+  - [x] 后续继续把默认窗口宽度调到 2000，高度保持 1188
+  - [x] 验证：`OpenCodeClientVision` xrsimulator build 通过；`OpenCodeClient` iphonesimulator build 通过
+
+- [x] **visionOS 原生 target 基线（2026-04-30）**：
+  - [x] 新增 `OpenCodeClientVision` application target，SDK 指向 `xros`，device family 设为 Vision，源码复用现有 `OpenCodeClient/` synchronized root group
+  - [x] 保留 iPad 三栏 `NavigationSplitView` 作为 visionOS 的主 layout；不引入 tab-based 顶层导航
+  - [x] visionOS 首版不支持 SSH tunnel：`Settings` 中隐藏 SSH Tunnel section，启动/前后台恢复流程不再尝试自动连接 tunnel；底层 `SSHTunnelManager` 在 visionOS 使用 stub，避免链接 Citadel / swift-nio-ssh
+  - [x] visionOS 首版先用系统 `AttributedString(markdown:)` 验证 target 能独立编译；后续已切换到本地 patched MarkdownUI / NetworkImage
+  - [x] 兼容 visionOS API：将 `scrollDismissesKeyboard(.immediately)` 包装为平台条件修饰符，visionOS 下跳过该 unavailable modifier
+  - [x] 验证：`xcodebuild -project "OpenCodeClient.xcodeproj" -target "OpenCodeClientVision" -configuration Debug -sdk xrsimulator CODE_SIGNING_ALLOWED=NO build` 通过
+  - [x] 后续验证：本地 patched MarkdownUI / NetworkImage 已能让 visionOS target 直接使用 `MarkdownUI.Markdown`
+
+- [x] **MarkdownUI / NetworkImage visionOS package patch（2026-05-01）**：
+  - [x] 最初新增 `third_party/swift-markdown-ui`（2.4.1）和 `third_party/NetworkImage`（6.0.1）本地 package source，用 Xcode local package reference 替代远端 MarkdownUI reference
+  - [x] 后续迁移到 GitHub forks：`grapeot/swift-markdown-ui` tag `2.4.1-visionos.1` 和 `grapeot/NetworkImage` tag `6.0.1-visionos.1`，Xcode project 使用 exact version 引用，不再 vendor `third_party/`
+  - [x] `swift-markdown-ui/Package.swift` 升到 Swift tools 5.9，声明 `.visionOS(.v1)`，并把 `NetworkImage` 指向 `https://github.com/grapeot/NetworkImage` exact `6.0.1-visionos.1`
+  - [x] `NetworkImage/Package.swift` 升到 Swift tools 5.9，声明 `.visionOS(.v1)`；`NetworkImage.swift` 增加 visionOS availability，并用 1x1 transparent `CGImage` 作为空图占位，避开 UIKit/AppKit-only empty image initializer
+  - [x] `MessageRowView` 与 `FileContentView` 在 visionOS 上恢复使用 `MarkdownUI.Markdown`，删除临时 native Markdown fallback
+  - [x] 打开 visionOS Markdown embedded image 支持：`OpenCodeClientVision` 显式链接 `NetworkImage`，`FileContentView` 与 `MessageRowView` 在 visionOS 上复用 iOS 的 `WorkspaceMarkdownImageProvider` / `MarkdownImageResolver` 路径
+  - [x] visionOS 上点击 Markdown embedded image 时改为打开独立 Image Preview window；iPhone/iPad 继续使用原有 sheet 预览
+  - [x] 验证：`xcodebuild -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClientVision" -configuration Debug -sdk xrsimulator CODE_SIGNING_ALLOWED=NO build` 通过
+  - [x] 验证：`xcodebuild -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build` 通过
+  - [x] 后续验证：打开 visionOS Markdown image gate 后，`OpenCodeClientVision` xrsimulator build 与 `OpenCodeClient` iphonesimulator build 均通过
+
+- [x] **默认模型切换到 GPT-5.5（2026-04-28）**：
+  - [x] 默认发送模型从 DeepSeek 切换为 `openai/gpt-5.5`
+  - [x] GPT 预设显示名和 model ID 从 `GPT-5.4` / `gpt-5.4` 升级为 `GPT-5.5` / `gpt-5.5`
+  - [x] 为已保存旧 `openai/gpt-5.4` 选择的 session 增加兼容映射，避免模型 selector 回退
+  - [x] 新增默认选择与旧 GPT 选择迁移测试
+
+- [x] **Markdown 报告图片渲染修复（2026-04-15）**：
+  - [x] 根因确认：Android 能显示报告内图片，不是 markdown 内容问题；Android 会先把相对图片路径解析成 `data:` URI 再渲染，而 iOS 聊天视图原来只做了路径解析，没有把能渲染 `data:` URL 的 image provider 接上
+  - [x] `MessageRowView`：为聊天中的 `ResolvedMarkdownView` 补上 `WorkspaceMarkdownImageProvider`，让已经被 `MarkdownImageResolver` 转换好的 `data:` URI 真正显示出来
+  - [x] `WorkspaceMarkdownImageProvider`：增加 `workspaceDirectory` 参与路径相对化，避免 markdown 图片在文件预览里带着绝对 workspace 前缀走错 `/file/content` API path
+  - [x] `FileContentView`：将 `state.currentSession?.directory` 传入 `MarkdownPreviewView` / `WorkspaceMarkdownImageProvider`，让文件预览与聊天视图在 workspace 路径语义上保持一致
+  - [x] 测试修正：`WorkspaceMarkdownImageProviderTests.decodesBase64DataURL()` 改为使用真实 1x1 PNG 的 base64，而不是无效的 `"hello"` payload；新增 absolute-workspace prefix stripping 覆盖
+  - [x] 验证：`xcodebuild -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' build` 通过；同目标 `test` 通过
+  - **Commit**: `5554fe9` — fix: render markdown report images on ios
+  - **Commit**: `45044d4` — test: align markdown image provider data-url coverage
+
+- [x] **Markdown caption 图片块预览修复（2026-05-03）**：
+  - [x] 根因确认：`![image](url)` 后紧跟 caption 且中间没有空行时，MarkdownUI 会把图片解析为 paragraph 内的 inline image，绕过 `WorkspaceMarkdownImageProvider`，导致远程大图按原始尺寸显示且无法点击预览。
+  - [x] `MarkdownPreviewView` 渲染前将“单独一行图片 + 下一行非空文本”规范化为 image block，不改原始文件内容；真正的行内图片保持不变。
+  - [x] `WorkspaceMarkdownImageProvider` 为远程 HTTP(S) 图片增加 URLSession 直接下载路径，避免远程图片依赖 OpenCode server 的 base64 文件接口。
+  - [x] 新增 normalizer 测试与 HTTP(S) URL 路径测试；验证 `xcodebuild test` 通过。
+
+- [x] **视觉重设计 Phase 2 — Mic 按钮 + 色彩统一 + 交互修复（2026-04-01）**：
+  - [x] Mic 按钮移至发送按钮上方 VStack，添加圆角描边（1.5pt brand blue）使其可识别为可点击按钮
+  - [x] Brand primary 从深蓝 `(0.15, 0.25, 0.55)` 改为系统蓝 `(0.0, 0.478, 1.0)`，与 iOS accent 统一
+  - [x] 全局 7 处 `.accentColor` 替换为 `DesignColors.Brand.primary`（ChatToolbarView 4 处、SessionListView 1 处、ContextUsageView 1 处、ToolPartView 1 处）
+  - [x] Transcribing 状态恢复可见（`surfaceLight`/`surfaceDark` 背景替代 `Color.clear`）
+  - [x] 恢复 AI 工作中仍可发送消息（send 按钮始终可见，stop/abort 在下方同时显示）
+  - **Commit**: `122f29c` — fix: mic button to right side with border, unify brand color to system blue
+  - **Commit**: `4bf2e12` — fix: restore transcribing visual feedback and send-while-busy
+
+- [x] **Design Token 测试覆盖（2026-04-01）**：
+  - [x] 新增 `DesignTokensTests`（9 个测试）：spacing 精确值 + 单调递增、corner radii 正向排序、brand primary/gold RGB 范围、opacity 合法范围 + 暗色 > 亮色、animation slots 存在性、semantic 色互不相同
+  - [x] 所有测试通过，`xcodebuild test` green
+
+- [x] **视觉重设计 Phase 1（2026-04-01）**：
+  - [x] `docs/design.md` — 11 个改进方向的完整设计文档
+  - [x] `DesignTokens.swift` — 集中设计系统（Brand 主色深蓝+金黄、语义色、暖灰中性色、七档排版、间距、圆角、动画预设、阴影）
+  - [x] 17 个视图文件重设计：MessageRowView、ChatTabView、ChatToolbarView、ToolPartView、PatchPartView、PermissionCardView、QuestionCardView、SessionListView、ContextUsageView、StreamingReasoningView、TodoListInlineView、FileTreeView、FileContentView、SettingsTabView、SplitSidebarView、ContentView、L10n
+  - [x] 消息方向 B（无气泡 + 4pt 左侧色条），AI 消息纯文字无容器
+  - [x] Composer 重设计（mic 内嵌左侧、send/stop 右侧方形按钮、输入框无描边）
+  - [x] Toolbar model+agent 合并为配置 sheet，Rename 降为 .secondary
+  - [x] 卡片语言统一：信息卡片去描边、操作卡片左侧色条
+  - [x] Context ring 缩小 18pt + ≥85% 脉冲动画
+  - [x] 所有新增 L10n key（configureTitle/Model/Agent/NoAgents）含中英翻译
+  - [x] Gemini subagent 误操作修复（PathNormalizer、APIConstants/StorageKeys 恢复、hardcoded strings）
+  - **Commit**: `b6ed2ac` — feat: redesign visual design system — design tokens, card language, composer, toolbar
+  - **尚未实现的进阶项**（P1: session 摘要预览、子 session 连接线、session 切换淡入淡出、permission 滑入动画、消息出现动画；P2: tool 卡片 spring 展开、Logo 空状态呼吸动画、深色 Logo 资源）
+
+- [x] **避免 session 切换时在 view update 内同步改状态（2026-03-30）**：
+  - [x] 将 `ChatTabView` 中响应 `currentSessionID` 变化的草稿同步与滚动状态重置改为 `Task { @MainActor in }`
+  - [x] 降低运行时 `Modifying state during view update` 告警概率，不改变现有 session 切换行为
+
+- [x] **GLM-5-turbo 预设切换到 GLM-5.1（2026-05-03）**：
+  - [x] 将模型预设显示名从 `GLM-5-turbo` 更新为 `GLM-5.1`，modelID 从 `glm-5-turbo` 更新为 `glm-5.1`
+  - [x] `canonicalModelPresetID` 遗留迁移：`glm-5-turbo` 和 `glm-5.1` 均映射到新的 `glm-5.1`
+  - [x] 同步更新 PRD、RFC 文档中的模型引用
+
+- [x] **GLM-5.1 预设切回 GLM-5-turbo（2026-03-30）**：
+  - [x] 将模型预设显示名从 `GLM-5.1` 更新为 `GLM-5-turbo`
+  - [x] 将底层 model ID 从 `glm-5.1` 更新为 `glm-5-turbo`
+  - [x] 为已保存旧 `glm-5.1` 选择的 session 增加兼容映射，避免 selector 回退到其他模型
+
+- [x] **Chat Composer 视觉紧凑化与 Return 键行为调整（2026-03-28）**：
+  - [x] 视觉：将 composer 最小高度从 44pt 继续压至 32pt，并将输入框容器/底部栏的垂直 padding 收紧到 5pt/6pt，使输入区高度更接近右侧圆形按钮，不再浪费底部空间
+  - [x] 行为：修改 `ChatComposerTextView` 使 Return 键（含外接键盘 Enter）始终插入换行而非发送，并将键盘 Return 键类型从 `.send` 改回 `.default`
+  - [x] 安全：保留 IME marked text 组合态安全，确保输入法确认操作不触发非预期行为；发送仅通过右侧圆形箭头按钮触发
+  - [x] 测试/文档：更新 `ChatComposerKeyAction` 单元测试以匹配新行为，并同步更新 README 关于 iPad 键盘行为的说明
+
+- [x] **iPad 中文输入法 + 物理键盘 Enter/Shift+Enter 提前发送修复（2026-03-28）**：
+  - [x] 根因：Chat composer 使用 `TextField(axis: .vertical)` 的 `.onSubmit`，并额外挂了发送按钮的 `.keyboardShortcut(.return)`；在 iPad 外接键盘场景下，这两条 Return 路径会在中文输入法仍处于 marked text/composition 时抢先触发发送
+  - [x] 修复：将 chat 输入框替换为一个局部 `UITextView` bridge，在 delegate 中按 `markedTextRange` 区分 IME 组合态；普通 `Enter` 发送，`Shift+Enter` 插入换行，并移除裸 `Return` keyboard shortcut
+  - [x] 测试/文档：新增 composer key decision 单测，更新 chat 输入框 UI smoke 为 `chat-input` accessibility identifier，并在 README 记录 iPad 外接键盘的 Enter/Shift+Enter 语义
+
+- [x] **iPad 新建 session 后 sidebar 重复 entry 修复（2026-03-28）**：
+  - [x] 根因：`createSession()` / `forkSession()` 的 optimistic `sessions.insert(..., at: 0)` 与 SSE `session.updated` 的写入路径都能把同一个 `session.id` 再塞进本地 `sessions`；iPad sidebar 常驻可见，所以重复 row 和双 selected 会立刻暴露；切到别的 session 后 `refreshSessions()` 用服务端 canonical 列表整体覆盖，本地重复随之消失
+  - [x] 修复：在 `AppState` 增加按 `session.id` 去重的 `upsertSession()` helper，并统一用于 `createSession()`、`forkSession()`、`session.updated`，确保本地 session 状态始终满足单 ID 唯一
+  - [x] 测试：新增 create/fork duplicate collapse 回归测试，以及 `session.updated` 收敛重复 session 的状态流测试；验证 `xcodebuild build -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'generic/platform=iOS Simulator'` 与 `xcodebuild test -project "OpenCodeClient.xcodeproj" -scheme "OpenCodeClient" -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4'` 全部通过
 
 - [x] **GLM-5-Turbo 预设切换到 GLM-5.1（2026-03-27）**：
   - [x] 将模型预设显示名从 `GLM-5-Turbo` 更新为 `GLM-5.1`
@@ -283,16 +475,20 @@
 - **GET /agent**：✅ 返回 `[AgentInfo]`，含 name/description/mode/hidden/native 字段。iOS 端过滤 mode=subagent。
 - **Import from Server**：依赖 config/providers，解析修复后应可正常导入。
 
-当前模型预设（9 个）：
+当前模型预设（13 个）：
 | 显示名称 | providerID | modelID |
 |----------|------------|---------|
 | Opus 4.6（默认） | `amazon-bedrock` | `us.anthropic.claude-opus-4-6-v1` |
 | Opus 4.6 (Anthropic) | `anthropic` | `claude-opus-4-6` |
 | Sonnet 4.6 | `amazon-bedrock` | `us.anthropic.claude-sonnet-4-6` |
 | GLM-5 | `zai-coding-plan` | `glm-5` |
+| GLM-5.1 | `zai-coding-plan` | `glm-5.1` |
+| GPT-5.5 | `openai` | `gpt-5.5` |
 | GPT-5.4 | `openai` | `gpt-5.4` |
 | GPT-5.3 Codex | `openai` | `gpt-5.3-codex` |
 | GPT-5.2 | `openai` | `gpt-5.2` |
+| DeepSeek V4 Flash | `deepseek` | `deepseek-v4-flash` |
+| DeepSeek V4 Pro | `deepseek` | `deepseek-v4-pro` |
 | Gemini 3.1 Pro | `google` | `gemini-3.1-pro-preview` |
 | Gemini 3 Flash | `google` | `gemini-3-flash-preview` |
 

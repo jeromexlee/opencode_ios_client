@@ -39,3 +39,11 @@ git merge upstream-main
 ## Agent Default
 
 When the user asks to keep the fork updated, perform the upstream sync workflow above by default.
+
+## Local Notes
+
+- `xcodebuild build` and `xcodebuild test` must run sequentially, not in parallel, because this repo shares the same DerivedData/build database and concurrent runs commonly fail with `build.db: database is locked`.
+- If you need both validations, run build first, wait for it to finish, then run tests.
+- Keep chat input UI tests anchored on stable accessibility identifiers rather than `TextField`-specific queries, because the composer implementation may use UIKit bridges.
+- When the user is actively using an existing OpenCode server, do not kill or restart the live process, especially anything bound to port `4096`.
+- In that situation, skip destructive runtime validation against the live server; if runtime verification is still needed, use a separate temporary port/process and never touch the user's active `4096` process.

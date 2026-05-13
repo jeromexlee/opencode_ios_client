@@ -6,81 +6,83 @@
 import SwiftUI
 
 struct PermissionCardView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let permission: PendingPermission
     let onRespond: (APIClient.PermissionResponse) -> Void
 
-    private let accent = Color.orange
-    private let cornerRadius: CGFloat = 12
+    private let accent = DesignColors.Semantic.warning
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.shield.fill")
-                    .foregroundStyle(accent)
-                    .font(.title3)
-                Text(L10n.t(.permissionRequired))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(accent)
-            }
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(accent)
+                .frame(width: 4)
 
-            if let name = permission.permission, !name.isEmpty {
-                Text(name)
-                    .font(.callout.weight(.semibold))
-            }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .foregroundStyle(accent)
+                        .font(.title3)
+                    Text(L10n.t(.permissionRequired))
+                        .font(DesignTypography.headline.weight(.semibold))
+                        .foregroundStyle(accent)
+                }
 
-            Text(permission.description)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                if let name = permission.permission, !name.isEmpty {
+                    Text(name)
+                        .font(DesignTypography.body.weight(.semibold))
+                }
 
-            if !permission.patterns.isEmpty {
-                Text(permission.patterns.joined(separator: ", "))
-                    .font(.caption2)
+                Text(permission.description)
+                    .font(DesignTypography.body)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
 
-            VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Button {
-                        onRespond(.once)
-                    } label: {
-                        Text(L10n.t(.permissionAllowOnce))
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
+                if !permission.patterns.isEmpty {
+                    Text(permission.patterns.joined(separator: ", "))
+                        .font(DesignTypography.micro)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        Button {
+                            onRespond(.once)
+                        } label: {
+                            Text(L10n.t(.permissionAllowOnce))
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+
+                        Button {
+                            onRespond(.always)
+                        } label: {
+                            Text(L10n.t(.permissionAllowAlways))
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.blue)
+                        .disabled(!permission.allowAlways)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
 
                     Button {
-                        onRespond(.always)
+                        onRespond(.reject)
                     } label: {
-                        Text(L10n.t(.permissionAllowAlways))
+                        Text(L10n.t(.permissionReject))
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    .tint(.blue)
-                    .disabled(!permission.allowAlways)
+                    .tint(.red)
                 }
-
-                Button {
-                    onRespond(.reject)
-                } label: {
-                    Text(L10n.t(.permissionReject))
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(.red)
             }
+            .padding(DesignSpacing.cardPadding)
         }
-        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(accent.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .stroke(accent.opacity(0.14), lineWidth: 1)
-        )
+        .background(accent.opacity(DesignColors.surfaceFill(for: colorScheme)))
+        .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
     }
 }

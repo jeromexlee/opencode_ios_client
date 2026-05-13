@@ -24,6 +24,7 @@ struct MessageRowView: View {
     let onOpenFilesTab: () -> Void
     let onForkFromMessage: ((String) -> Void)?
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.colorScheme) private var colorScheme
     @State private var selectedPreviewImage: MessagePreviewImage?
 
     // MarkdownUI is unstable on very large transcript-like blobs in chat.
@@ -33,7 +34,7 @@ struct MessageRowView: View {
 
     private var cardGridColumnCount: Int { sizeClass == .regular ? 3 : 2 }
     private var cardGridColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 10), count: cardGridColumnCount)
+        Array(repeating: GridItem(.flexible(), spacing: DesignSpacing.sm), count: cardGridColumnCount)
     }
 
     private enum AssistantBlock: Identifiable {
@@ -82,17 +83,21 @@ struct MessageRowView: View {
     }
 
     @ViewBuilder
-    private func markdownText(_ text: String) -> some View {
+    private func markdownText(_ text: String, isUser: Bool) -> some View {
+        let font = isUser ? DesignTypography.bodyProminent : DesignTypography.body
         if shouldRenderMarkdown(text) {
             if Self.useRawTextFallbackForMarkdown(text) {
                 Text(text)
+                    .font(font)
                     .textSelection(.enabled)
             } else {
                 ResolvedMarkdownView(text: text, state: state, workspaceDirectory: workspaceDirectory)
+                    .font(font)
                     .textSelection(.enabled)
             }
         } else {
             Text(text)
+                .font(font)
                 .textSelection(.enabled)
         }
     }
@@ -105,13 +110,19 @@ struct MessageRowView: View {
         
         var body: some View {
             Markdown(resolvedText ?? text)
+                .markdownImageProvider(
+                    WorkspaceMarkdownImageProvider(
+                        loadFileContent: { path in try await state.loadFileContent(path: path) },
+                        workspaceDirectory: workspaceDirectory
+                    )
+                )
                 .task {
                     resolvedText = await MarkdownImageResolver.resolveImages(
                         in: text,
                         workspaceDirectory: workspaceDirectory,
                         fetchContent: { path in try await state.loadFileContent(path: path) }
                     )
-                }
+            }
         }
     }
 
@@ -178,58 +189,54 @@ struct MessageRowView: View {
 
     private var userMessageView: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if !userImageParts.isEmpty {
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(3, max(1, userImageParts.count))),
-                    alignment: .leading,
-                    spacing: 8
-                ) {
-                    ForEach(userImageParts, id: \.id) { part in
-                        if let data = part.imageData, let uiImage = UIImage(data: data) {
-                            Button {
-                                selectedPreviewImage = MessagePreviewImage(id: part.id, data: data, filename: part.filename)
-                            } label: {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(minHeight: 120, maxHeight: 180)
-                                    .frame(maxWidth: .infinity)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            if !userTextParts.isEmpty || !userImageParts.isEmpty {
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(DesignColors.Brand.primary)
+                        .frame(width: 4)
+
+                    VStack(alignment: .leading, spacing: DesignSpacing.sm) {
+                        if !userImageParts.isEmpty {
+                            LazyVGrid(
+                                columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(3, max(1, userImageParts.count))),
+                                alignment: .leading,
+                                spacing: 8
+                            ) {
+                                ForEach(userImageParts, id: \.id) { part in
+                                    if let data = part.imageData, let uiImage = UIImage(data: data) {
+                                        Button {
+                                            selectedPreviewImage = MessagePreviewImage(id: part.id, data: data, filename: part.filename)
+                                        } label: {
+                                            Image(uiImage: uiImage)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(minHeight: 120, maxHeight: 180)
+                                                .frame(maxWidth: .infinity)
+                                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
                             }
-                            .buttonStyle(.plain)
+                        }
+
+                        ForEach(userTextParts, id: \.id) { part in
+                            markdownText(part.text ?? "", isUser: true)
                         }
                     }
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.accentColor.opacity(0.07))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.accentColor.opacity(0.14), lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-
-            if !userTextParts.isEmpty {
-                ForEach(userTextParts, id: \.id) { part in
-                    markdownText(part.text ?? "")
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.accentColor.opacity(0.07))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.accentColor.opacity(0.14), lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .background(DesignColors.Brand.primary.opacity(DesignColors.userMessageFill(for: colorScheme)))
+                .clipShape(RoundedRectangle(cornerRadius: DesignCorners.large))
             }
 
             if !userContextParts.isEmpty {
                 LazyVGrid(
                     columns: cardGridColumns,
                     alignment: .leading,
-                    spacing: 10
+                    spacing: DesignSpacing.sm
                 ) {
                     ForEach(userContextParts, id: \.id) { part in
                         contextCardView(part)
@@ -284,15 +291,13 @@ struct MessageRowView: View {
             ForEach(assistantBlocks) { block in
                 switch block {
                 case .text(let part):
-                    markdownText(part.text ?? "")
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                    markdownText(part.text ?? "", isUser: false)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case .cards(let parts):
                     LazyVGrid(
                         columns: cardGridColumns,
                         alignment: .leading,
-                        spacing: 10
+                        spacing: DesignSpacing.sm
                     ) {
                         ForEach(parts, id: \.id) { part in
                             cardView(part)
@@ -303,16 +308,12 @@ struct MessageRowView: View {
             if let err = message.info.errorMessageForDisplay {
                 Text(err)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(DesignColors.Semantic.error)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.red.opacity(0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.red.opacity(0.25), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .background(DesignColors.Semantic.error.opacity(DesignColors.surfaceFill(for: colorScheme)))
+                    .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
                     .textSelection(.enabled)
             }
         }

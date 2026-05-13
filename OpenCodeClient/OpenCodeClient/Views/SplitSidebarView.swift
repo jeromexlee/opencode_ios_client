@@ -90,7 +90,7 @@ private struct SessionsSidebarList: View {
             }
         }
         .listStyle(.plain)
-        .tint(.secondary)
+        .tint(DesignColors.Brand.primary)
         .refreshable {
             await state.refreshSessions()
         }

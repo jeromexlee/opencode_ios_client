@@ -217,6 +217,10 @@ enum L10n {
         case activityMakingEdits
         case activityRunningCommands
         case activityGatheringThoughts
+        case configureTitle
+        case configureModel
+        case configureAgent
+        case configureNoAgents
     }
 
     private static let en: [String: String] = [
@@ -430,7 +434,12 @@ enum L10n {
         Key.activitySearchingWeb.rawValue: "Searching web",
         Key.activityMakingEdits.rawValue: "Making edits",
         Key.activityRunningCommands.rawValue: "Running commands",
-        Key.activityGatheringThoughts.rawValue: "Gathering thoughts"
+        Key.activityGatheringThoughts.rawValue: "Gathering thoughts",
+
+        Key.configureTitle.rawValue: "Configure",
+        Key.configureModel.rawValue: "Model",
+        Key.configureAgent.rawValue: "Agent",
+        Key.configureNoAgents.rawValue: "No agents available"
     ]
 
     private static let zh: [String: String] = [
@@ -644,7 +653,12 @@ enum L10n {
         Key.activitySearchingWeb.rawValue: "搜索网络",
         Key.activityMakingEdits.rawValue: "修改代码",
         Key.activityRunningCommands.rawValue: "执行命令",
-        Key.activityGatheringThoughts.rawValue: "整理思路"
+        Key.activityGatheringThoughts.rawValue: "整理思路",
+
+        Key.configureTitle.rawValue: "配置",
+        Key.configureModel.rawValue: "模型",
+        Key.configureAgent.rawValue: "Agent",
+        Key.configureNoAgents.rawValue: "暂无可用 Agent"
     ]
 
     private static var languageIsChinese: Bool {

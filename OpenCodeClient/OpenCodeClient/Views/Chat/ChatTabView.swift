@@ -11,6 +11,23 @@ import os
 import UIKit
 #endif
 
+private final class SpeechPartialTranscriptBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var transcript = ""
+
+    func update(_ newValue: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        transcript = newValue
+    }
+
+    func current() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return transcript
+    }
+}
+
 private enum MessageGroupItem: Identifiable {
     case user(MessageWithParts)
     case assistantMerged([MessageWithParts])
@@ -81,10 +98,15 @@ struct ChatTabView: View {
         return prefix + " " + cleanedTranscript
     }
 
+    static func speechFailureInput(prefix: String, lastPartialTranscript: String) -> String {
+        mergedSpeechInput(prefix: prefix, transcript: lastPartialTranscript)
+    }
+
     @Bindable var state: AppState
     var showSettingsInToolbar: Bool = false
     var onSettingsTap: (() -> Void)?
     @State private var inputText = ""
+    @State private var hasMarkedText = false
     @State private var isSending = false
     @State private var isSyncingDraft = false
     @State private var showSessionList = false
@@ -102,6 +124,7 @@ struct ChatTabView: View {
     @State private var pendingBottomVisibilityTask: Task<Void, Never>?
     @State private var isNearBottom = true
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.colorScheme) private var colorScheme
 
     private var useGridCards: Bool { sizeClass == .regular }
     private var canSendCurrentInput: Bool {
@@ -109,7 +132,7 @@ struct ChatTabView: View {
             ? (!trimmedInputText.isEmpty || !state.pendingImages.isEmpty)
             : !trimmedInputText.isEmpty
         let recordingBlocked = composerMode == .chat ? (isRecording || isTranscribing) : false
-        return hasPayload && !isSending && !recordingBlocked
+        return hasPayload && !isSending && !recordingBlocked && !hasMarkedText
     }
     private var trimmedInputText: String {
         inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -119,6 +142,23 @@ struct ChatTabView: View {
     }
     private var composerModeTitle: String {
         composerMode == .chat ? L10n.t(.chatModeChat) : L10n.t(.chatModeShell)
+    }
+
+    private var micButtonBackground: Color {
+        if isRecording {
+            return Color.red.opacity(DesignColors.Opacity.recordingActionFill)
+        }
+        if isTranscribing {
+            return colorScheme == .dark ? DesignColors.Neutral.surfaceDark : DesignColors.Neutral.surfaceLight
+        }
+        return .clear
+    }
+
+    private var micButtonBorder: Color {
+        if isRecording {
+            return Color.red.opacity(DesignColors.Opacity.recordingActionBorder)
+        }
+        return DesignColors.Brand.primary.opacity(DesignColors.Opacity.borderStroke)
     }
 
     fileprivate struct TurnActivity: Identifiable {
@@ -345,7 +385,7 @@ struct ChatTabView: View {
                 ScrollViewReader { proxy in
                     GeometryReader { scrollGeometry in
                         ScrollView {
-                            VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: DesignSpacing.messageVertical) {
                                 if showLoadMoreHint {
                                     HStack(spacing: 8) {
                                         if state.isLoadingOlderMessagesInCurrentSession {
@@ -368,28 +408,15 @@ struct ChatTabView: View {
                                     emptySessionStateView
                                 } else {
                                     ForEach(chatItems) { item in
-                                        switch item {
-                                        case .group(let group):
-                                            switch group {
-                                            case .user(let msg):
-                                                MessageRowView(
-                                                    state: state,
-                                                    message: msg,
-                                                    sessionTodos: state.sessionTodos[msg.info.sessionID] ?? [],
-                                                    workspaceDirectory: state.currentSession?.directory,
-                                                    onOpenResolvedPath: openFileInChat,
-                                                    onOpenFilesTab: openFilesTab,
-                                                    onForkFromMessage: { messageID in
-                                                        Task { await state.forkSession(messageID: messageID) }
-                                                    }
-                                                )
-                                            case .assistantMerged(let msgs):
-                                                if let first = msgs.first {
-                                                    let merged = MessageWithParts(info: first.info, parts: msgs.flatMap(\.parts))
+                                        Group {
+                                            switch item {
+                                            case .group(let group):
+                                                switch group {
+                                                case .user(let msg):
                                                     MessageRowView(
                                                         state: state,
-                                                        message: merged,
-                                                        sessionTodos: state.sessionTodos[merged.info.sessionID] ?? [],
+                                                        message: msg,
+                                                        sessionTodos: state.sessionTodos[msg.info.sessionID] ?? [],
                                                         workspaceDirectory: state.currentSession?.directory,
                                                         onOpenResolvedPath: openFileInChat,
                                                         onOpenFilesTab: openFilesTab,
@@ -397,11 +424,27 @@ struct ChatTabView: View {
                                                             Task { await state.forkSession(messageID: messageID) }
                                                         }
                                                     )
+                                                case .assistantMerged(let msgs):
+                                                    if let first = msgs.first {
+                                                        let merged = MessageWithParts(info: first.info, parts: msgs.flatMap(\.parts))
+                                                        MessageRowView(
+                                                            state: state,
+                                                            message: merged,
+                                                            sessionTodos: state.sessionTodos[merged.info.sessionID] ?? [],
+                                                            workspaceDirectory: state.currentSession?.directory,
+                                                            onOpenResolvedPath: openFileInChat,
+                                                            onOpenFilesTab: openFilesTab,
+                                                            onForkFromMessage: { messageID in
+                                                                Task { await state.forkSession(messageID: messageID) }
+                                                            }
+                                                        )
+                                                    }
                                                 }
+                                            case .activity(let a):
+                                                TurnActivityRowView(activity: a)
                                             }
-                                        case .activity(let a):
-                                            TurnActivityRowView(activity: a)
                                         }
+                                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                                     }
                                 }
                                 if let streamingPart = state.streamingReasoningPart {
@@ -411,9 +454,9 @@ struct ChatTabView: View {
 
                                 if useGridCards {
                                     LazyVGrid(
-                                        columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
+                                        columns: Array(repeating: GridItem(.flexible(), spacing: DesignSpacing.sm), count: 3),
                                         alignment: .leading,
-                                        spacing: 10
+                                        spacing: DesignSpacing.sm
                                     ) {
                                         ForEach(currentPermissions) { perm in
                                             PermissionCardView(permission: perm) { response in
@@ -473,7 +516,7 @@ struct ChatTabView: View {
                         .refreshable {
                             await state.loadOlderMessagesForCurrentSession()
                         }
-                        .scrollDismissesKeyboard(.immediately)
+                        .opencodeScrollDismissesKeyboard()
                         .onPreferenceChange(BottomMarkerMinYPreferenceKey.self) { bottomMarkerMinY in
                             scheduleBottomVisibilityUpdate(
                                 bottomMarkerMinY: bottomMarkerMinY,
@@ -501,8 +544,7 @@ struct ChatTabView: View {
                         }
                     }
                 }
-
-                 Divider()
+                Divider()
                 VStack(spacing: 10) {
                     if composerMode == .chat, !state.pendingImages.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -532,109 +574,153 @@ struct ChatTabView: View {
                         .frame(height: 68)
                     }
 
-                    HStack(alignment: .bottom, spacing: 10) {
-                        HStack(alignment: .bottom, spacing: 10) {
-                            VStack(spacing: 8) {
-                                if composerMode == .chat {
-                                    Button {
-                                        showImagePicker = true
-                                    } label: {
-                                        Image(systemName: "plus")
-                                            .font(.title3.weight(.semibold))
-                                            .foregroundStyle(.secondary)
-                                            .frame(width: 28, height: 28)
-                                            .background(Color(.systemBackground))
-                                            .clipShape(Circle())
-                                    }
-                                    .accessibilityLabel(L10n.t(.chatAttachImage))
-                                    .disabled(isSending)
-                                } else {
-                                    Color.clear
-                                        .frame(width: 28, height: 28)
-                                }
-
+                    HStack(alignment: .bottom, spacing: DesignSpacing.md) {
+                        VStack(spacing: DesignControls.composerActionButtonSpacing) {
+                            if composerMode == .chat {
                                 Button {
-                                    setComposerMode(composerMode == .chat ? .shell : .chat)
+                                    showImagePicker = true
                                 } label: {
-                                    Image(systemName: composerMode == .shell ? "terminal" : "text.bubble")
-                                        .font(.callout.weight(.semibold))
-                                        .foregroundStyle(composerMode == .shell ? Color.orange : Color.secondary)
-                                        .frame(width: 28, height: 28)
-                                        .background(
-                                            Circle()
-                                                .fill(composerMode == .shell ? Color.orange.opacity(0.12) : Color(.systemBackground))
-                                        )
+                                    Image(systemName: "plus")
+                                        .font(DesignControls.composerActionIconFont)
+                                        .foregroundStyle(DesignColors.Brand.primary)
+                                        .frame(width: DesignControls.composerActionButtonSize, height: DesignControls.composerActionButtonSize)
+                                        .background {
+                                            RoundedRectangle(cornerRadius: DesignCorners.medium)
+                                                .fill(DesignColors.Brand.primary.opacity(0.12))
+                                        }
                                 }
-                                .accessibilityLabel(composerModeTitle)
+                                .accessibilityLabel(L10n.t(.chatAttachImage))
+                                .disabled(isSending)
+                                .buttonStyle(.plain)
                             }
 
-                            TextField(composerPlaceholder, text: $inputText, axis: .vertical)
-                                .textFieldStyle(.plain)
-                                .lineLimit(3...8)
-                                .submitLabel(.send)
-                                .onSubmit {
-                                    sendCurrentInput()
-                                }
-                                .font(composerMode == .shell ? .system(.body, design: .monospaced) : .body)
+                            Button {
+                                setComposerMode(composerMode == .chat ? .shell : .chat)
+                            } label: {
+                                Image(systemName: composerMode == .shell ? "terminal.fill" : "text.bubble.fill")
+                                    .font(DesignControls.composerActionIconFont)
+                                    .foregroundStyle(composerMode == .shell ? Color.orange : DesignColors.Brand.primary)
+                                    .frame(width: DesignControls.composerActionButtonSize, height: DesignControls.composerActionButtonSize)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: DesignCorners.medium)
+                                            .fill(
+                                                composerMode == .shell
+                                                    ? Color.orange.opacity(0.12)
+                                                    : DesignColors.Brand.primary.opacity(0.12)
+                                            )
+                                    }
+                            }
+                            .accessibilityLabel(composerModeTitle)
+                            .buttonStyle(.plain)
+                        }
+
+                        ZStack(alignment: .topLeading) {
+                            ChatComposerTextView(
+                                text: $inputText,
+                                hasMarkedText: $hasMarkedText,
+                                placeholder: composerPlaceholder,
+                                onSubmit: sendCurrentInput
+                            )
+                            .frame(
+                                minHeight: DesignControls.composerTextMinHeight,
+                                maxHeight: DesignControls.composerTextMaxHeight
+                            )
+                            .accessibilityIdentifier("chat-input")
+
+                            if inputText.isEmpty {
+                                Text(composerPlaceholder)
+                                    .foregroundStyle(.secondary)
+                                    .allowsHitTesting(false)
+                                    .accessibilityHidden(true)
+                            }
                         }
                         .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.systemGray6))
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 20)
-                                .stroke(Color(.systemGray4), lineWidth: 0.5)
-                        )
+                        .padding(.vertical, 5)
+                        .background(colorScheme == .dark ? DesignColors.Neutral.composerDark : DesignColors.Neutral.composerLight)
+                        .clipShape(RoundedRectangle(cornerRadius: DesignCorners.large))
 
-                        VStack(spacing: 8) {
+                        VStack(spacing: DesignControls.composerActionButtonSpacing) {
                             if composerMode == .chat {
                                 Button {
                                     Task { await toggleRecording() }
                                 } label: {
-                                    if isTranscribing {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                    } else {
-                                        Image(systemName: isRecording ? "mic.circle.fill" : "mic.circle")
-                                            .font(.title)
-                                            .symbolRenderingMode(.hierarchical)
-                                            .foregroundStyle(isRecording ? .red : .secondary)
+                                    ZStack {
+                                        if isTranscribing {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        } else {
+                                            Image(systemName: "mic.fill")
+                                                .font(DesignControls.composerActionIconFont)
+                                                .foregroundStyle(isRecording ? Color.red : DesignColors.Brand.primary)
+                                        }
                                     }
+                                    .frame(width: DesignControls.composerActionButtonSize, height: DesignControls.composerActionButtonSize)
+                                    .background {
+                                        RoundedRectangle(cornerRadius: DesignCorners.medium)
+                                            .fill(micButtonBackground)
+                                    }
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: DesignCorners.medium)
+                                            .stroke(
+                                                micButtonBorder,
+                                                lineWidth: 1.5
+                                            )
+                                    )
                                 }
                                 .disabled(isSending || isTranscribing)
+                                .buttonStyle(.plain)
                             }
 
                             Button {
                                 sendCurrentInput()
                             } label: {
-                                if isSending {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                } else {
-                                    Image(systemName: "arrow.up.circle.fill")
-                                        .font(.title)
-                                        .symbolRenderingMode(.hierarchical)
-                                        .foregroundColor(.accentColor)
+                                ZStack {
+                                    if isSending {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                            .tint(.white)
+                                    } else {
+                                        Image(systemName: "arrow.up")
+                                            .font(DesignControls.composerActionIconFont.bold())
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+                                .frame(width: DesignControls.composerActionButtonSize, height: DesignControls.composerActionButtonSize)
+                                .background {
+                                    RoundedRectangle(cornerRadius: DesignCorners.medium)
+                                        .fill(DesignColors.Brand.primary)
                                 }
                             }
-                            .keyboardShortcut(.return, modifiers: [])
                             .disabled(!canSendCurrentInput)
+                            .keyboardShortcut(.return, modifiers: [])
 
                             if state.isBusy {
                                 Button {
                                     Task { await state.abortSession() }
                                 } label: {
-                                    Image(systemName: "stop.circle.fill")
-                                        .font(.title)
-                                        .foregroundStyle(.red)
+                                    Image(systemName: "stop.fill")
+                                        .font(DesignControls.composerActionIconFont.bold())
+                                        .foregroundStyle(Color.red)
+                                        .frame(width: DesignControls.composerActionButtonSize, height: DesignControls.composerActionButtonSize)
+                                        .background {
+                                            RoundedRectangle(cornerRadius: DesignCorners.medium)
+                                                .fill(Color.red.opacity(DesignColors.Opacity.recordingActionFill))
+                                        }
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: DesignCorners.medium)
+                                                .stroke(
+                                                    Color.red.opacity(DesignColors.Opacity.recordingActionBorder),
+                                                    lineWidth: 1.5
+                                                )
+                                        )
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, DesignControls.composerContainerHorizontalPadding)
+                .padding(.vertical, DesignControls.composerContainerVerticalPadding)
                 .background(.bar)
             }
             .navigationTitle(state.currentSession?.title ?? L10n.t(.appChat))
@@ -690,11 +776,14 @@ struct ChatTabView: View {
                 syncDraftFromState(sessionID: state.currentSessionID)
             }
             .onChange(of: state.currentSessionID) { oldID, newID in
-                state.setDraftText(inputText, for: oldID)
-                syncDraftFromState(sessionID: newID)
-                isNearBottom = true
-                pendingBottomVisibilityTask?.cancel()
-                pendingBottomVisibilityTask = nil
+                let draftText = inputText
+                Task { @MainActor in
+                    state.setDraftText(draftText, for: oldID)
+                    syncDraftFromState(sessionID: newID)
+                    isNearBottom = true
+                    pendingBottomVisibilityTask?.cancel()
+                    pendingBottomVisibilityTask = nil
+                }
             }
             .onChange(of: inputText) { _, newValue in
                 guard !isSyncingDraft else { return }
@@ -746,11 +835,11 @@ struct ChatTabView: View {
     }
 
     private func sendCurrentInput() {
-        guard !isSending else { return }
         let text = trimmedInputText
-        guard composerMode == .shell ? !text.isEmpty : (!text.isEmpty || !state.pendingImages.isEmpty) else { return }
+        guard canSendCurrentInput else { return }
 
         inputText = ""
+        hasMarkedText = false
         isSending = true
         Task {
             let success = composerMode == .shell
@@ -882,9 +971,11 @@ struct ChatTabView: View {
             isTranscribing = true
             defer { isTranscribing = false }
             let prefix = inputText
+            let partialTranscriptBuffer = SpeechPartialTranscriptBuffer()
             let transcribeStart = ProcessInfo.processInfo.systemUptime
             do {
                 let transcript = try await state.transcribeAudio(audioFileURL: url) { partial in
+                    partialTranscriptBuffer.update(partial)
                     Task { @MainActor in
                         inputText = Self.mergedSpeechInput(prefix: prefix, transcript: partial)
                     }
@@ -894,7 +985,7 @@ struct ChatTabView: View {
                 inputText = Self.mergedSpeechInput(prefix: prefix, transcript: cleaned)
             } catch {
                 Self.logger.error("[SpeechProfile] chat transcribe failed ms=\(max(0, Int((ProcessInfo.processInfo.systemUptime - transcribeStart) * 1000)), privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-                inputText = prefix
+                inputText = Self.speechFailureInput(prefix: prefix, lastPartialTranscript: partialTranscriptBuffer.current())
                 speechError = error.localizedDescription
             }
         } else {
@@ -958,34 +1049,48 @@ struct ChatTabView: View {
     @ViewBuilder
     private var emptySessionStateView: some View {
         if state.currentSessionID == nil {
-            Text(L10n.t(.chatSelectSessionFirst))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.top, 20)
+            VStack(spacing: DesignSpacing.md) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(DesignColors.Brand.primary.opacity(0.2))
+                Text(L10n.t(.chatSelectSessionFirst))
+                    .font(DesignTypography.headline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 60)
+            .frame(maxWidth: .infinity)
         } else if isCurrentSessionBusy {
             // If busy but there is no user turn yet, show a lightweight placeholder.
             if lastUserMessageIDInCurrentSession == nil {
                 HStack(spacing: 10) {
                     ProgressView()
                     Text(L10n.t(.chatSessionBusyMessage))
-                        .font(.caption)
+                        .font(DesignTypography.meta)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 18)
             }
         } else {
-            Text(L10n.t(.chatNoMessages))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.top, 20)
+            VStack(spacing: DesignSpacing.md) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 48))
+                    .foregroundStyle(DesignColors.Brand.gold.opacity(0.3))
+                Text(L10n.t(.chatNoMessages))
+                    .font(DesignTypography.headline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 60)
+            .frame(maxWidth: .infinity)
         }
     }
 
     private func statusColor(_ status: SessionStatus) -> Color {
         switch status.type {
-        case "busy": return .blue
-        case "error": return .red
-        default: return .green
+        case "busy": return DesignColors.Brand.primary
+        case "error": return DesignColors.Semantic.error
+        default: return DesignColors.Semantic.success
         }
     }
 
@@ -1026,6 +1131,17 @@ struct ChatTabView: View {
     }
 }
 
+private extension View {
+    @ViewBuilder
+    func opencodeScrollDismissesKeyboard() -> some View {
+        #if os(visionOS)
+        self
+        #else
+        self.scrollDismissesKeyboard(.immediately)
+        #endif
+    }
+}
+
 private struct TurnActivityRowView: View {
     let activity: ChatTabView.TurnActivity
 
@@ -1045,27 +1161,21 @@ private struct TurnActivityRowView: View {
         let elapsed = activity.elapsedString(now: now)
         let text = activity.text
 
-        return HStack(spacing: 8) {
+        return HStack(spacing: DesignSpacing.sm) {
             Image(systemName: activity.state == .running ? "clock" : "checkmark.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(DesignTypography.micro)
+                .foregroundStyle(DesignColors.Neutral.textSecondary)
             Text(text)
+                .font(DesignTypography.micro)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .foregroundStyle(DesignColors.Neutral.textSecondary)
             Spacer(minLength: 12)
             Text(elapsed)
+                .font(DesignTypography.micro)
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DesignColors.Neutral.textTertiary)
         }
-        .font(.caption2)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(.systemGray4).opacity(0.6), lineWidth: 0.5)
-        )
+        .padding(.vertical, DesignSpacing.sm)
     }
 }

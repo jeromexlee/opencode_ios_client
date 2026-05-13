@@ -809,8 +809,21 @@ struct PathNormalizerTests {
 
     @Test func stripsDotDotSegments() {
         #expect(PathNormalizer.normalize("../secrets.txt") == "secrets.txt")
-        #expect(PathNormalizer.normalize("src/../app.swift") == "src/app.swift")
+        #expect(PathNormalizer.normalize("src/../app.swift") == "app.swift")
         #expect(PathNormalizer.normalize("a/../b/./c.txt") == "b/c.txt")
+    }
+
+    @Test func foldsParentDirectorySegmentsForMarkdownAssets() {
+        #expect(
+            PathNormalizer.normalize("docs/reports/../assets/timeline_40d.png")
+                == "docs/assets/timeline_40d.png"
+        )
+        #expect(
+            PathNormalizer.resolveWorkspaceRelativePath(
+                "docs/reports/../assets/timeline_40d.png",
+                workspaceDirectory: "/Users/test/workspace"
+            ) == "docs/assets/timeline_40d.png"
+        )
     }
 
     @Test func resolvesWorkspaceRelativeFromAbsolutePath() {
@@ -829,6 +842,86 @@ struct PathNormalizerTests {
         let dir = "/Users/test/workspace"
         let abs = "/Users/test/workspace/src%2Fapp.swift"
         #expect(PathNormalizer.resolveWorkspaceRelativePath(abs, workspaceDirectory: dir) == "src/app.swift")
+    }
+}
+
+struct WorkspaceMarkdownImageProviderTests {
+
+    @Test func imageBaseURLResolvesParentDirectoryAssetPath() {
+        let baseURL = WorkspaceMarkdownImageProvider.imageBaseURL(
+            markdownFilePath: "adhoc_jobs/health_quantification/docs/reports/health_synthesis_report_2026-04-09.md"
+        )
+        let imageURL = URL(string: "../assets/timeline_40d.png", relativeTo: baseURL)
+        #expect(
+            WorkspaceMarkdownImageProvider.workspaceRelativePath(from: imageURL)
+                == "adhoc_jobs/health_quantification/docs/assets/timeline_40d.png"
+        )
+    }
+
+    @Test func decodesBase64DataURL() {
+        let pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+XGZ0AAAAASUVORK5CYII="
+        let url = URL(string: "data:image/png;base64,\(pngBase64)")
+        let data = WorkspaceMarkdownImageProvider.decodeDataURL(url)
+        #expect(data == Data(base64Encoded: pngBase64))
+    }
+
+    @Test func workspaceRelativePathStripsAbsoluteWorkspacePrefix() {
+        let url = URL(string: "opencode-workspace://workspace/Users/test/workspace/docs/assets/chart.png")
+        #expect(
+            WorkspaceMarkdownImageProvider.workspaceRelativePath(
+                from: url,
+                workspaceDirectory: "/Users/test/workspace"
+            ) == "docs/assets/chart.png"
+        )
+    }
+
+    @Test func workspaceRelativePathReturnsNilForHTTPSURL() {
+        let url = URL(string: "https://upload.wikimedia.org/wikipedia/commons/0/05/Yonghe_Temple_entrance.jpg")
+        #expect(WorkspaceMarkdownImageProvider.workspaceRelativePath(from: url) == nil)
+    }
+
+    @Test func workspaceRelativePathReturnsNilForHTTPURL() {
+        let url = URL(string: "http://example.com/image.png")
+        #expect(WorkspaceMarkdownImageProvider.workspaceRelativePath(from: url) == nil)
+    }
+
+    @Test func decodeDataURLReturnsNilForHTTPSURL() {
+        let url = URL(string: "https://example.com/image.png")
+        #expect(WorkspaceMarkdownImageProvider.decodeDataURL(url) == nil)
+    }
+}
+
+struct MarkdownPreviewViewTests {
+
+    @Test func normalizeStandaloneImageBlocksSeparatesCaption() {
+        let markdown = """
+        ![雍和宫入口](https://example.com/yonghe.jpg)
+        *图注文字*
+        """
+
+        let normalized = MarkdownPreviewView.normalizeStandaloneImageBlocks(markdown)
+
+        #expect(normalized == """
+        ![雍和宫入口](https://example.com/yonghe.jpg)
+
+        *图注文字*
+        """)
+    }
+
+    @Test func normalizeStandaloneImageBlocksLeavesExistingBlankLine() {
+        let markdown = """
+        ![chart](assets/chart.png)
+
+        Caption
+        """
+
+        #expect(MarkdownPreviewView.normalizeStandaloneImageBlocks(markdown) == markdown)
+    }
+
+    @Test func normalizeStandaloneImageBlocksDoesNotChangeInlineImageText() {
+        let markdown = "Before ![inline](assets/icon.png) after"
+
+        #expect(MarkdownPreviewView.normalizeStandaloneImageBlocks(markdown) == markdown)
     }
 }
 
@@ -1040,6 +1133,10 @@ struct LayoutConstantsTests {
         #expect(LayoutConstants.Spacing.standard < LayoutConstants.Spacing.comfortable)
         #expect(LayoutConstants.Spacing.comfortable < LayoutConstants.Spacing.spacious)
     }
+
+    @Test func messageListSpacing() {
+        #expect(LayoutConstants.MessageList.spacing == 20)
+    }
 }
 
 // MARK: - Speech Recognition Defaults
@@ -1111,6 +1208,44 @@ struct AIBuildersAudioClientTests {
 
     @Test func mergedSpeechInputKeepsSeparatorForExistingInput() {
         #expect(ChatTabView.mergedSpeechInput(prefix: "Existing draft", transcript: "partial") == "Existing draft partial")
+    }
+
+    @Test func speechFailureInputPreservesLastPartialTranscript() {
+        #expect(ChatTabView.speechFailureInput(prefix: "", lastPartialTranscript: "partial result") == "partial result")
+        #expect(ChatTabView.speechFailureInput(prefix: "Existing draft", lastPartialTranscript: "partial result") == "Existing draft partial result")
+    }
+
+    @Test func speechFailureInputFallsBackToPrefixWithoutPartialTranscript() {
+        #expect(ChatTabView.speechFailureInput(prefix: "Existing draft", lastPartialTranscript: "   ") == "Existing draft")
+    }
+
+    @Test func chatComposerReturnUsesSystemDuringMarkedTextComposition() {
+        #expect(ChatComposerKeyAction.action(for: "\n", hasMarkedText: true, isShiftReturn: false) == .system)
+    }
+
+    @Test func chatComposerPlainReturnInsertsNewlineWhenNoMarkedText() {
+        #expect(ChatComposerKeyAction.action(for: "\n", hasMarkedText: false, isShiftReturn: false) == .insertNewline)
+    }
+
+    @Test func chatComposerShiftReturnInsertsNewlineWhenNoMarkedText() {
+        #expect(ChatComposerKeyAction.action(for: "\n", hasMarkedText: false, isShiftReturn: true) == .insertNewline)
+    }
+
+    @Test func chatComposerNonReturnLeavesSystemHandling() {
+        #expect(ChatComposerKeyAction.action(for: "x", hasMarkedText: false, isShiftReturn: false) == .system)
+    }
+
+    @Test func chatComposerSendGateRejectsMarkedText() {
+        #expect(ChatComposerSendGate.canSend(text: "nihao", isSending: false, hasMarkedText: true) == false)
+    }
+
+    @Test func chatComposerSendGateRejectsWhitespaceAndActiveSend() {
+        #expect(ChatComposerSendGate.canSend(text: "   ", isSending: false, hasMarkedText: false) == false)
+        #expect(ChatComposerSendGate.canSend(text: "hello", isSending: true, hasMarkedText: false) == false)
+    }
+
+    @Test func chatComposerSendGateAllowsCommittedText() {
+        #expect(ChatComposerSendGate.canSend(text: "hello", isSending: false, hasMarkedText: false) == true)
     }
 }
 
@@ -1648,7 +1783,6 @@ struct AgentInfoTests {
 // MARK: - ModelPreset ShortName Tests
 
 struct ModelPresetShortNameTests {
-    
     @Test func opusShortName() {
         let preset = ModelPreset(displayName: "Opus 4.6", providerID: "amazon-bedrock", modelID: "us.anthropic.claude-opus-4-6-v1")
         #expect(preset.shortName == "Opus")
@@ -1663,17 +1797,22 @@ struct ModelPresetShortNameTests {
         let preset = ModelPreset(displayName: "Sonnet 4.6", providerID: "amazon-bedrock", modelID: "us.anthropic.claude-sonnet-4-6")
         #expect(preset.shortName == "Sonnet")
     }
-    
+
+    @Test func deepseekShortName() {
+        let preset = ModelPreset(displayName: "DeepSeek", providerID: "deepseek", modelID: "deepseek-v4-flash")
+        #expect(preset.shortName == "DeepSeek")
+    }
+
     @Test func geminiShortName() {
         let preset = ModelPreset(displayName: "Gemini 3.1 Pro", providerID: "google", modelID: "gemini-3.1-pro")
         #expect(preset.shortName == "Gemini")
     }
-    
+
     @Test func gptShortName() {
         let preset = ModelPreset(displayName: "GPT-5.3 Codex", providerID: "openai", modelID: "gpt-5.3-codex")
         #expect(preset.shortName == "GPT")
     }
-    
+
     @Test func unknownModelFallsBackToDisplayName() {
         let preset = ModelPreset(displayName: "Custom Model", providerID: "custom", modelID: "custom-1")
         #expect(preset.shortName == "Custom Model")
@@ -1754,6 +1893,82 @@ struct ModelPresetSelectionTests {
         #expect(state.selectedModel?.displayName == "GLM-5")
         #expect(state.selectedModel?.providerID == "zai-coding-plan")
         #expect(state.selectedModel?.modelID == "glm-5")
+    }
+}
+
+struct ModelSelectionPersistenceTests {
+    @Test @MainActor func legacyGLMTurboSelectionMapsToGLM51Preset() {
+        let sessionID = "session-glm"
+        let defaultsKey = "selectedModelBySession"
+        let legacySelection = [sessionID: "zai-coding-plan/glm-5-turbo"]
+        let originalData = UserDefaults.standard.data(forKey: defaultsKey)
+
+        defer {
+            if let originalData {
+                UserDefaults.standard.set(originalData, forKey: defaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: defaultsKey)
+            }
+        }
+
+        let encoded = try! JSONEncoder().encode(legacySelection)
+        UserDefaults.standard.set(encoded, forKey: defaultsKey)
+
+        let state = AppState()
+        let session = Session(
+            id: sessionID,
+            slug: sessionID,
+            projectID: "p1",
+            directory: "/tmp",
+            parentID: nil,
+            title: sessionID,
+            version: "1",
+            time: .init(created: 0, updated: 100, archived: nil),
+            share: nil,
+            summary: nil
+        )
+
+        state.selectSession(session)
+
+        #expect(state.selectedModel?.displayName == "GLM-5.1")
+        #expect(state.selectedModel?.id == "zai-coding-plan/glm-5.1")
+    }
+
+    @Test @MainActor func gpt55SelectionRestoresCurrentPreset() {
+        let sessionID = "session-gpt"
+        let defaultsKey = "selectedModelBySession"
+        let savedSelection = [sessionID: "openai/gpt-5.5"]
+        let originalData = UserDefaults.standard.data(forKey: defaultsKey)
+
+        defer {
+            if let originalData {
+                UserDefaults.standard.set(originalData, forKey: defaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: defaultsKey)
+            }
+        }
+
+        let encoded = try! JSONEncoder().encode(savedSelection)
+        UserDefaults.standard.set(encoded, forKey: defaultsKey)
+
+        let state = AppState()
+        let session = Session(
+            id: sessionID,
+            slug: sessionID,
+            projectID: "p1",
+            directory: "/tmp",
+            parentID: nil,
+            title: sessionID,
+            version: "1",
+            time: .init(created: 0, updated: 100, archived: nil),
+            share: nil,
+            summary: nil
+        )
+
+        state.selectSession(session)
+
+        #expect(state.selectedModel?.displayName == "GPT-5.5")
+        #expect(state.selectedModel?.id == "openai/gpt-5.5")
     }
 }
 
@@ -1887,6 +2102,24 @@ struct ForkSessionTests {
         #expect(calls.count == 1)
         #expect(calls[0].1 == nil)
         #expect(state.currentSessionID == "forked-s2")
+    }
+
+    @Test @MainActor func forkSessionCollapsesExistingSessionWithSameID() async {
+        let apiClient = MockAPIClient()
+        let forked = Self.makeSession(id: "forked-s1", parentID: "s1", updated: 99)
+        await apiClient.setForkSessionResult(forked)
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+        state.sessions = [
+            Self.makeSession(id: "forked-s1", parentID: "s1", updated: 50),
+            Self.makeSession(id: "s1", updated: 10)
+        ]
+        state.currentSessionID = "s1"
+
+        await state.forkSession(messageID: "msg-42")
+
+        #expect(state.sessions.map(\.id) == ["forked-s1", "s1"])
+        #expect(state.currentSessionID == "forked-s1")
     }
 
     @Test @MainActor func forkSessionDoesNothingWhenNotConnected() async {
@@ -2528,6 +2761,24 @@ struct AppStateFlowTests {
         #expect(state.partsByMessage.isEmpty)
     }
 
+    @Test @MainActor func createSessionCollapsesExistingSessionWithSameID() async {
+        let apiClient = MockAPIClient()
+        let created = Self.makeSession(id: "created", updated: 30, title: "Created")
+        await apiClient.setCreateSessionResult(created)
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.isConnected = true
+        state.sessions = [
+            Self.makeSession(id: "created", updated: 20, title: "Old Created"),
+            Self.makeSession(id: "existing", updated: 10)
+        ]
+
+        await state.createSession()
+
+        #expect(state.sessions.map(\.id) == ["created", "existing"])
+        #expect(state.sessions.first?.title == "Created")
+        #expect(state.currentSessionID == "created")
+    }
+
     @Test @MainActor func sendMessageRollsBackOptimisticMessageOnFailure() async {
         let apiClient = MockAPIClient()
         await apiClient.setPromptError(APIError.invalidURL)
@@ -2649,6 +2900,26 @@ struct AppStateFlowTests {
         #expect(state.sessions.first?.id == "s-current")
         #expect(state.sessions.first?.title == "New Title")
         #expect(state.sessions.first?.directory == "/project/b")
+    }
+
+    @Test @MainActor func sessionUpdatedCollapsesDuplicateSessionEntries() async {
+        let apiClient = MockAPIClient()
+        let state = AppState(apiClient: apiClient, sseClient: MockSSEClient(), sshTunnelManager: SSHTunnelManager())
+        state.selectedProjectWorktree = nil
+        state.currentSessionID = "s-current"
+        state.sessions = [
+            Self.makeSession(id: "s-current", updated: 10, title: "First"),
+            Self.makeSession(id: "s-current", updated: 9, title: "Duplicate"),
+            Self.makeSession(id: "s-other", updated: 8, title: "Other")
+        ]
+
+        await state.applySSEEventForTesting(Self.makeSSEEvent("""
+        {"payload":{"type":"session.updated","properties":{"session":{"id":"s-current","slug":"s-current","projectID":"p1","directory":"/tmp","parentID":null,"title":"Fresh","version":"2","time":{"created":0,"updated":30},"share":null,"summary":null}}}}
+        """))
+
+        #expect(state.sessions.map(\.id) == ["s-current", "s-other"])
+        #expect(state.sessions.first?.title == "Fresh")
+        #expect(state.sessions.first?.version == "2")
     }
 
     @Test @MainActor func messagePartUpdatedAccumulatesStreamingMessageText() async {
@@ -2817,5 +3088,98 @@ struct AppStateFlowTests {
             files: nil
         )
         return MessageWithParts(info: message, parts: [part])
+    }
+}
+
+// MARK: - Design Tokens Tests
+
+@MainActor
+struct DesignTokensTests {
+
+    @Test func spacingScaleIsConsistent() {
+        #expect(DesignSpacing.xs == 4)
+        #expect(DesignSpacing.sm == 8)
+        #expect(DesignSpacing.md == 12)
+        #expect(DesignSpacing.lg == 16)
+        #expect(DesignSpacing.xl == 20)
+        #expect(DesignSpacing.xxl == 24)
+        #expect(DesignSpacing.messageVertical == 20)
+        #expect(DesignSpacing.cardPadding == 12)
+        #expect(DesignSpacing.cardGap == 16)
+    }
+
+    @Test func spacingIncreasesMonotonically() {
+        let values = [DesignSpacing.xs, DesignSpacing.sm, DesignSpacing.md, DesignSpacing.lg, DesignSpacing.xl, DesignSpacing.xxl]
+        for i in 0..<(values.count - 1) {
+            #expect(values[i] < values[i + 1])
+        }
+    }
+
+    @Test func cornerRadiiArePositive() {
+        #expect(DesignCorners.small > 0)
+        #expect(DesignCorners.medium > DesignCorners.small)
+        #expect(DesignCorners.large > DesignCorners.medium)
+    }
+
+    @Test func brandPrimaryIsSystemBlueTone() {
+        let brand = DesignColors.Brand.primary
+        let uiColor = UIColor(brand)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        #expect(r < 0.1)
+        #expect(g > 0.3 && g < 0.6)
+        #expect(b > 0.8)
+    }
+
+    @Test func brandGoldIsWarmTone() {
+        let gold = DesignColors.Brand.gold
+        let uiColor = UIColor(gold)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        #expect(r > 0.7)
+        #expect(g > 0.5 && g < 0.8)
+        #expect(b < 0.3)
+    }
+
+    @Test func opacityValuesAreInValidRange() {
+        #expect(DesignColors.Opacity.surfaceFill > 0 && DesignColors.Opacity.surfaceFill < 0.2)
+        #expect(DesignColors.Opacity.surfaceFillDark > 0 && DesignColors.Opacity.surfaceFillDark < 0.2)
+        #expect(DesignColors.Opacity.borderStroke > 0 && DesignColors.Opacity.borderStroke < 0.3)
+        #expect(DesignColors.Opacity.userMessageFill > 0 && DesignColors.Opacity.userMessageFill < 0.2)
+        #expect(DesignColors.Opacity.selectionFill > 0 && DesignColors.Opacity.selectionFill < 0.2)
+    }
+
+    @Test func darkModeOpacityHigherThanLight() {
+        #expect(DesignColors.Opacity.surfaceFillDark > DesignColors.Opacity.surfaceFill)
+        #expect(DesignColors.Opacity.borderStrokeDark > DesignColors.Opacity.borderStroke)
+        #expect(DesignColors.Opacity.userMessageFillDark > DesignColors.Opacity.userMessageFill)
+    }
+
+    @Test func animationPresetSlotsArePopulated() {
+        let all: [String: Animation] = [
+            "quick": DesignAnimation.quick,
+            "standard": DesignAnimation.standard,
+            "spring": DesignAnimation.spring,
+            "gentleSpring": DesignAnimation.gentleSpring,
+            "snappy": DesignAnimation.snappy,
+            "breathing": DesignAnimation.breathing,
+        ]
+        #expect(all.count == 6)
+    }
+
+    @Test func semanticColorsAreDistinct() {
+        let error = UIColor(DesignColors.Semantic.error)
+        let success = UIColor(DesignColors.Semantic.success)
+        let warning = UIColor(DesignColors.Semantic.warning)
+        let info = UIColor(DesignColors.Semantic.info)
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        error.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        success.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        #expect(r1 != r2 || g1 != g2 || b1 != b2)
+        warning.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        #expect(r1 != r2 || g1 != g2 || b1 != b2)
+        info.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        #expect(r1 != r2 || g1 != g2 || b1 != b2)
     }
 }

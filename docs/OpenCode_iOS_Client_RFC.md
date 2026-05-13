@@ -79,7 +79,7 @@
 | 状态 | Observation (@Observable) | 替代 ObservableObject，减少样板代码 |
 | 网络 | URLSession | 原生，无需 Alamofire；SSE 用 `URLSession` 的 `Delegate` 或 `AsyncSequence` |
 | SSH 库 | Citadel | 基于 Apple SwiftNIO SSH 封装，支持 Swift 5.10+，API 友好 |
-| Markdown | MarkdownUI | 支持代码块、链接、列表 |
+| Markdown | MarkdownUI + 自定义图片 provider / resolver | 支持代码块、链接、列表，以及 workspace 内相对图片 |
 | Diff | 自建 View（优先 iOS 原生能力） | 基于 `before`/`after` 做 unified diff 渲染，行级高亮 |
 | 持久化 | UserDefaults + Keychain | 连接信息、模型预设；密码存 Keychain |
 
@@ -235,6 +235,23 @@ enum SSHKeyManager {
 - 在 Settings 内生成可复制的 reverse tunnel command（用户可直接在电脑端执行）
 - 公钥复制入口常驻，不依赖 tunnel enable 状态
 - 在 SSH 配置区增加灰字提示：启用 SSH 后仍需到上方 `Server Connection` 点击 `Test Connection`
+
+### 3.6 Markdown 图片解析契约
+
+Markdown 文本里出现的图片分两类：
+
+1. **公网 URL**：`https://...`，可交给默认网络图片加载路径
+2. **workspace 内相对图片**：如 `../assets/timeline_40d.png`，必须由客户端自己解析
+
+对第二类，RFC 约束如下：
+
+- Files 预览和 Chat 消息渲染都必须支持 repo 内相对图片，不允许出现“文件预览能看见、聊天里看不见”的双重语义
+- 相对图片路径解析必须同时考虑 `markdownFilePath` 和 `workspaceDirectory`
+- 解析后的最终文件请求必须是 **workspace-relative path**，再交给 `/file/content` API 获取内容
+- Chat 场景允许先把图片转换为 `data:` URI 再交给 MarkdownUI；但一旦采用这条路径，渲染端必须显式挂载能处理 `data:` URL 的 image provider
+- Files 预览场景若使用 `imageBaseURL`，仍然需要在 image provider 中做 workspace-relative 归一化，避免绝对路径穿透到 API 层
+
+这条契约的目标是：无论同一份 Markdown 报告从 Files 打开，还是由 AI 在 Chat 中直接输出，都应该得到一致的图片结果。
 
 ### 4. 状态管理
 
@@ -412,8 +429,8 @@ var customProjectPath: String = ""        // "Custom path" 时用户输入的路
 - **文件预览**：iPad 上不使用 sheet。左栏选择文件、或 Chat 中点击 tool/patch 的 file path 时，更新中栏 Preview 预览对应文件
 - **刷新**：Preview 中栏右上角提供刷新按钮（重新加载文件内容），用于外部变更后的手动刷新
 - **Toolbar**：第一行统一：左（Session 列表、重命名、Compact、新建 Session）+ 右（模型下拉列表、Agent 下拉列表、Context Usage ring、**Settings 按钮**）；Settings 点击以 sheet 打开
-- **模型与 Agent 选择器**：原 chip 横向滚动改为下拉列表（Menu + Picker）。模型列表固定（Opus 4.6〔Bedrock 默认〕/ Opus 4.6 (Anthropic) / Sonnet 4.6 / GLM-5 / GPT-5.4 / GPT-5.3 Codex / GPT-5.2 / Gemini 3.1 Pro / Gemini 3 Flash）；Agent 列表从 `GET /agent` 动态获取（过滤 hidden）
-- **模型标签**：iPhone 上使用短名（`Opus` / `Sonnet` / `GPT` / `Gemini`）以适配窄宽；iPad 上显示全称
+- **模型与 Agent 选择器**：原 chip 横向滚动改为下拉列表（Menu + Picker）。模型列表固定（Opus 4.6〔Bedrock 默认〕/ Opus 4.6 (Anthropic) / Sonnet 4.6 / GLM-5 / GLM-5.1 / GPT-5.5 / GPT-5.4 / GPT-5.3 Codex / GPT-5.2 / DeepSeek V4 Flash / DeepSeek V4 Pro / Gemini 3.1 Pro / Gemini 3 Flash）；Agent 列表从 `GET /agent` 动态获取（过滤 hidden）
+- **模型标签**：iPhone 上使用短名（`Opus` / `Sonnet` / `GLM` / `GPT` / `DS-Flash` / `DS-Pro` / `Gemini`）以适配窄宽；iPad 上显示全称
 - **实现**：`@Environment(\.horizontalSizeClass)` 分支：regular 时渲染三栏 split，小屏时渲染 `TabView`；iPad 用 `previewFilePath` 驱动中栏预览，iPhone 保留 `fileToOpenInFilesTab` 走 sheet / tab 跳转
 
 ### 9. Context Usage（上下文占用）

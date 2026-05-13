@@ -109,7 +109,12 @@ struct FileContentView: View {
         let useRaw = isMarkdown ? useRawTextForMarkdown(text) : false
         if isMarkdown {
             if showPreview && !useRaw {
-                MarkdownPreviewView(text: text, state: state, markdownFilePath: filePath)
+                MarkdownPreviewView(
+                    text: text,
+                    state: state,
+                    markdownFilePath: filePath,
+                    workspaceDirectory: state.currentSession?.directory
+                )
             } else {
                 RawTextView(text: text, monospaced: !showPreview)
             }
@@ -178,10 +183,10 @@ struct CodeView: View {
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { i, line in
-                        HStack(alignment: .top, spacing: 8) {
+                        HStack(alignment: .top, spacing: DesignSpacing.sm) {
                             Text("\(i + 1)")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                                .font(DesignTypography.microMono)
+                                .foregroundStyle(DesignColors.Neutral.textSecondary)
                                 .frame(width: 36, alignment: .trailing)
                             Text(line)
                                 .font(.system(.body, design: .monospaced))
@@ -192,7 +197,7 @@ struct CodeView: View {
                         .padding(.vertical, 2)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, DesignSpacing.sm)
                 .frame(minWidth: 400, alignment: .leading)
             }
         }
@@ -205,7 +210,7 @@ struct MarkdownPreviewView: View {
     let text: String
     let state: AppState
     let markdownFilePath: String?
-    @State private var resolvedText: String?
+    let workspaceDirectory: String?
 
     private static let maxLineLength = 1500
     private static let maxTotalLength = 60_000
@@ -217,7 +222,39 @@ struct MarkdownPreviewView: View {
         return maxLine > Self.maxLineLength
     }
 
+    static func normalizeStandaloneImageBlocks(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n")
+        guard lines.count > 1 else { return text }
+
+        var normalized: [String] = []
+        normalized.reserveCapacity(lines.count)
+
+        for index in lines.indices {
+            let line = lines[index]
+            normalized.append(line)
+
+            guard isStandaloneMarkdownImageLine(line) else { continue }
+            guard index + 1 < lines.count else { continue }
+
+            let nextLine = lines[index + 1]
+            if !nextLine.trimmingCharacters(in: .whitespaces).isEmpty {
+                normalized.append("")
+            }
+        }
+
+        return normalized.joined(separator: "\n")
+    }
+
+    private static func isStandaloneMarkdownImageLine(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("!["), trimmed.hasSuffix(")") else { return false }
+        guard let closeAlt = trimmed.firstIndex(of: "]") else { return false }
+        let afterAlt = trimmed[trimmed.index(after: closeAlt)...]
+        return afterAlt.hasPrefix("(") && !afterAlt.dropFirst().isEmpty
+    }
+
     var body: some View {
+        let previewText = Self.normalizeStandaloneImageBlocks(text)
         ScrollView {
             Group {
                 if useRawTextFallback {
@@ -225,23 +262,25 @@ struct MarkdownPreviewView: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    Markdown(resolvedText ?? text)
+                    Markdown(
+                        previewText,
+                        imageBaseURL: WorkspaceMarkdownImageProvider.imageBaseURL(markdownFilePath: markdownFilePath)
+                    )
+                        .markdownImageProvider(
+                            WorkspaceMarkdownImageProvider(
+                                loadFileContent: { path in try await state.loadFileContent(path: path) },
+                                workspaceDirectory: workspaceDirectory
+                            )
+                        )
                         .textSelection(.enabled)
                 }
             }
             .padding()
         }
-        .task {
-            resolvedText = await MarkdownImageResolver.resolveImages(
-                in: text,
-                markdownFilePath: markdownFilePath,
-                workspaceDirectory: state.currentSession?.directory,
-                fetchContent: { path in try await state.loadFileContent(path: path) }
-            )
-        }
         .onAppear {
             let fallback = useRawTextFallback
-            print("[MarkdownPreviewView] onAppear len=\(text.count) useRawTextFallback=\(fallback)")
+            let imageBaseURL = WorkspaceMarkdownImageProvider.imageBaseURL(markdownFilePath: markdownFilePath)?.absoluteString ?? "nil"
+            print("[MarkdownPreviewView] onAppear len=\(text.count) useRawTextFallback=\(fallback) imageBaseURL=\(imageBaseURL)")
         }
     }
 }

@@ -452,16 +452,23 @@ final class AppState {
         ModelPreset(displayName: "Opus 4.6 (Anthropic)", providerID: "anthropic", modelID: "claude-opus-4-6"),
         ModelPreset(displayName: "Sonnet 4.6", providerID: "amazon-bedrock", modelID: "us.anthropic.claude-sonnet-4-6"),
         ModelPreset(displayName: "GLM-5", providerID: "zai-coding-plan", modelID: "glm-5"),
+        ModelPreset(displayName: "GLM-5.1", providerID: "zai-coding-plan", modelID: "glm-5.1"),
+        ModelPreset(displayName: "GPT-5.5", providerID: "openai", modelID: "gpt-5.5"),
         ModelPreset(displayName: "GPT-5.4", providerID: "openai", modelID: "gpt-5.4"),
         ModelPreset(displayName: "GPT-5.3 Codex", providerID: "openai", modelID: "gpt-5.3-codex"),
         ModelPreset(displayName: "GPT-5.2", providerID: "openai", modelID: "gpt-5.2"),
+        ModelPreset(displayName: "DeepSeek V4 Flash", providerID: "deepseek", modelID: "deepseek-v4-flash"),
+        ModelPreset(displayName: "DeepSeek V4 Pro", providerID: "deepseek", modelID: "deepseek-v4-pro"),
         ModelPreset(displayName: "Gemini 3.1 Pro", providerID: "google", modelID: "gemini-3.1-pro-preview"),
         ModelPreset(displayName: "Gemini 3 Flash", providerID: "google", modelID: "gemini-3-flash-preview"),
     ]
     var selectedModelIndex: Int = 0
     private var defaultModelPresetIndex: Int {
-        guard let recentSessionID = sessions.max(by: { $0.time.updated < $1.time.updated })?.id,
-              let savedModelID = selectedModelIDBySessionID[recentSessionID],
+        guard let recentSessionID = sessions.max(by: { $0.time.updated < $1.time.updated })?.id else {
+            return 0
+        }
+        let savedModelID = selectedModelIDBySessionID[recentSessionID].map(canonicalModelPresetID(for:))
+        guard let savedModelID,
               let idx = modelPresets.firstIndex(where: { $0.id == savedModelID }) else {
             return 0
         }
@@ -702,12 +709,35 @@ final class AppState {
         }
     }
 
+    private func upsertSession(_ session: Session) {
+        let existingIndex = sessions.firstIndex(where: { $0.id == session.id })
+        sessions.removeAll { $0.id == session.id }
+
+        let targetIndex: Int
+        if let existingIndex {
+            targetIndex = min(existingIndex, sessions.count)
+        } else {
+            targetIndex = 0
+        }
+
+        sessions.insert(session, at: targetIndex)
+    }
+
     func setSelectedModelIndex(_ index: Int) {
         guard modelPresets.indices.contains(index) else { return }
         selectedModelIndex = index
         guard let sessionID = currentSessionID else { return }
         selectedModelIDBySessionID[sessionID] = modelPresets[index].id
         persistSelectedModelMap()
+    }
+
+    private func canonicalModelPresetID(for savedID: String) -> String {
+        switch savedID {
+        case "zai-coding-plan/glm-5-turbo":
+            return "zai-coding-plan/glm-5.1"
+        default:
+            return savedID
+        }
     }
     
     func setSelectedAgentIndex(_ index: Int) {
@@ -725,7 +755,12 @@ final class AppState {
             selectedModelIndex = defaultModelPresetIndex
             return
         }
-        guard let idx = modelPresets.firstIndex(where: { $0.id == saved }) else {
+        let canonicalSaved = canonicalModelPresetID(for: saved)
+        if canonicalSaved != saved {
+            selectedModelIDBySessionID[sessionID] = canonicalSaved
+            persistSelectedModelMap()
+        }
+        guard let idx = modelPresets.firstIndex(where: { $0.id == canonicalSaved }) else {
             selectedModelIndex = defaultModelPresetIndex
             return
         }
@@ -736,7 +771,8 @@ final class AppState {
         guard let sessionID = currentSessionID else { return }
 
         guard let info = messages.reversed().compactMap({ $0.info.resolvedModel }).first else { return }
-        guard let idx = modelPresets.firstIndex(where: { $0.providerID == info.providerID && $0.modelID == info.modelID }) else {
+        let canonicalModelID = canonicalModelPresetID(for: "\(info.providerID)/\(info.modelID)")
+        guard let idx = modelPresets.firstIndex(where: { $0.id == canonicalModelID }) else {
             Self.logger.warning("syncModelFromMessageHistory: model \(info.providerID, privacy: .public)/\(info.modelID, privacy: .public) not in presets, keeping current selection")
             return
         }
@@ -820,8 +856,9 @@ final class AppState {
             let health = try await apiClient.health()
             isConnected = health.healthy
             serverVersion = health.version
-            if health.healthy {
+            if isConnected {
                 rememberSuccessfulServerAddress(baseURL)
+                connectSSE()
             }
         } catch {
             isConnected = false
@@ -975,7 +1012,7 @@ final class AppState {
             
             Self.logger.debug("createSession: created id=\(session.id, privacy: .public) directory=\(session.directory, privacy: .public) effectiveProjectDir=\(self.effectiveProjectDirectory ?? "nil", privacy: .public)")
             
-            sessions.insert(session, at: 0)
+            upsertSession(session)
             currentSessionID = session.id
             if let m = selectedModel {
                 selectedModelIDBySessionID[session.id] = m.id
@@ -1003,7 +1040,7 @@ final class AppState {
 
             Self.logger.debug("forkSession: created id=\(forked.id, privacy: .public) from=\(sessionID, privacy: .public) messageID=\(messageID ?? "nil", privacy: .public)")
 
-            sessions.insert(forked, at: 0)
+            upsertSession(forked)
             currentSessionID = forked.id
             messageStore.resetStreaming()
             messages = []
@@ -1486,12 +1523,30 @@ final class AppState {
     private func bootstrapSyncCurrentSession(reason: String) async {
         guard currentSessionID != nil else { return }
         let start = Date()
+
+        await validateAndRecoverCurrentSession()
+
         await loadMessages()
         await refreshPendingPermissions()
         await refreshPendingQuestions()
         await syncSessionStatusesFromPoll()
         let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
         Self.logger.debug("bootstrapSync reason=\(reason, privacy: .public) elapsedMs=\(elapsedMs, privacy: .public) messages=\(self.messages.count, privacy: .public) permissions=\(self.pendingPermissions.count, privacy: .public) questions=\(self.pendingQuestions.count, privacy: .public)")
+    }
+
+    /// Check whether the current session still exists on the server.
+    /// If the session was deleted (e.g. server restarted), reset currentSessionID
+    /// so the next loadSessions call auto-selects a valid session.
+    private func validateAndRecoverCurrentSession() async {
+        guard let sid = currentSessionID else { return }
+        do {
+            _ = try await apiClient.messages(sessionID: sid, limit: 1)
+        } catch {
+            guard case APIError.httpError(let statusCode, _) = error, statusCode == 404 else { return }
+            Self.logger.debug("bootstrapSync: current session \(sid) not found on server, resetting")
+            currentSessionID = nil
+            await loadSessions()
+        }
     }
 
     private func syncSessionStatusesFromPoll(markMissingBusyAsIdle: Bool = true) async {
@@ -1682,11 +1737,7 @@ final class AppState {
                 if shouldApply {
                     let wasUpdate = sessions.contains(where: { $0.id == session.id })
                     Self.logger.debug("session.updated id=\(session.id, privacy: .public) archived=\(session.time.archived.map { String($0) } ?? "nil", privacy: .public) dir=\(session.directory, privacy: .public) op=\(wasUpdate ? "replace" : "insert", privacy: .public)")
-                    if let idx = sessions.firstIndex(where: { $0.id == session.id }) {
-                        sessions[idx] = session
-                    } else {
-                        sessions.insert(session, at: 0)
-                    }
+                    upsertSession(session)
                 } else {
                     Self.logger.debug("session.updated skip id=\(session.id, privacy: .public) dir=\(session.directory, privacy: .public) effectiveDir=\(dir ?? "nil", privacy: .public)")
                 }

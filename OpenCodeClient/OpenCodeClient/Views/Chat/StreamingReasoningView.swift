@@ -19,8 +19,8 @@ struct StreamingReasoningView: View {
     var body: some View {
         if !displayText.isEmpty {
             Text(displayText)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .font(DesignTypography.micro)
+                .foregroundStyle(DesignColors.Neutral.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

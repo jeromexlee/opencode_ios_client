@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct QuestionCardView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let request: QuestionRequest
     let onReply: ([[String]]) -> Void
     let onReject: () -> Void
@@ -17,8 +18,7 @@ struct QuestionCardView: View {
     @State private var isCustomEditing: Bool = false
     @State private var isSending: Bool = false
 
-    private let accent = Color.blue
-    private let cornerRadius: CGFloat = 12
+    private let accent = DesignColors.Semantic.info
 
     init(request: QuestionRequest, onReply: @escaping ([[String]]) -> Void, onReject: @escaping () -> Void) {
         self.request = request
@@ -33,37 +33,39 @@ struct QuestionCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-            progressDots
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(accent)
+                .frame(width: 4)
 
-            Text(question.question)
-                .font(.subheadline.weight(.semibold))
+            VStack(alignment: .leading, spacing: 12) {
+                header
+                progressDots
 
-            Text(question.allowMultiple ? L10n.t(.questionMultiHint) : L10n.t(.questionSingleHint))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text(question.question)
+                    .font(DesignTypography.headline.weight(.semibold))
 
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(question.options) { option in
-                    optionRow(option)
+                Text(question.allowMultiple ? L10n.t(.questionMultiHint) : L10n.t(.questionSingleHint))
+                    .font(DesignTypography.meta)
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(question.options) { option in
+                        optionRow(option)
+                    }
+
+                    if question.allowCustom {
+                        customInputSection
+                    }
                 }
 
-                if question.allowCustom {
-                    customInputSection
-                }
+                actionButtons
             }
-
-            actionButtons
+            .padding(DesignSpacing.cardPadding)
         }
-        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(accent.opacity(0.07))
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .stroke(accent.opacity(0.14), lineWidth: 1)
-        )
+        .background(accent.opacity(DesignColors.surfaceFill(for: colorScheme)))
+        .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
     }
 
     private var header: some View {

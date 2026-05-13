@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct ToolPartView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let part: Part
     let sessionTodos: [TodoItem]
     let workspaceDirectory: String?
@@ -42,11 +43,11 @@ struct ToolPartView: View {
     private var toolAccentColor: Color {
         if part.syntheticTaggedContent != nil { return .teal }
         if part.tool == "todowrite" { return .green }
-        return .accentColor
+        return DesignColors.Brand.primary
     }
 
     private var toolBackgroundColor: Color {
-        toolAccentColor.opacity(0.07)
+        DesignColors.Brand.primary.opacity(DesignColors.surfaceFill(for: colorScheme))
     }
 
     private var toolIconName: String {
@@ -129,10 +130,10 @@ struct ToolPartView: View {
                 if let reason = toolReasonText, !reason.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L10n.t(.toolReason))
-                            .font(.caption2)
+                            .font(DesignTypography.micro)
                             .foregroundStyle(.secondary)
                         Text(reason)
-                            .font(.caption2)
+                            .font(DesignTypography.micro)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -148,10 +149,10 @@ struct ToolPartView: View {
                    !input.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L10n.t(.toolCommandInput))
-                            .font(.caption2)
+                            .font(DesignTypography.micro)
                             .foregroundStyle(.secondary)
                         Text(input)
-                            .font(.system(.caption2, design: .monospaced))
+                            .font(DesignTypography.microMono)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -168,7 +169,7 @@ struct ToolPartView: View {
                    !output.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L10n.t(.toolOutput))
-                            .font(.caption2)
+                            .font(DesignTypography.micro)
                             .foregroundStyle(.secondary)
                         if isImageFile {
                             if let img = decodedImage {
@@ -176,20 +177,20 @@ struct ToolPartView: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(maxHeight: 200)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .clipShape(RoundedRectangle(cornerRadius: DesignCorners.small))
                                     .onTapGesture { showImageSheet = true }
                             } else {
                                 HStack(spacing: 8) {
                                     Image(systemName: "photo")
                                         .foregroundStyle(.secondary)
                                     Text("Image file")
-                                        .font(.caption2)
+                                        .font(DesignTypography.micro)
                                         .foregroundStyle(.secondary)
                                 }
                             }
                         } else {
                             Text(output)
-                                .font(.system(.caption2, design: .monospaced))
+                                .font(DesignTypography.microMono)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -200,13 +201,13 @@ struct ToolPartView: View {
                             openFile(path)
                         } label: {
                             Label(L10n.toolOpenFileLabel(path: path), systemImage: "folder.badge.plus")
-                                .font(.caption2)
+                                .font(DesignTypography.micro)
                         }
                     }
                 }
             }
-            .font(.caption2)
-            .padding(8)
+            .font(DesignTypography.micro)
+            .padding(DesignSpacing.cardPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
             HStack(spacing: 6) {
@@ -241,12 +242,17 @@ struct ToolPartView: View {
                         }
                     } label: {
                         Image(systemName: "folder.badge.plus")
-                            .font(.caption2)
+                            .font(DesignControls.toolOpenFileIconFont)
+                            .frame(
+                                width: DesignControls.toolOpenFileButtonSize,
+                                height: DesignControls.toolOpenFileButtonSize
+                            )
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .font(.caption2)
+            .font(DesignTypography.micro)
         }
         .onChange(of: part.stateDisplay) { _, newValue in
             if !part.isSynthetic, newValue?.lowercased() == "completed" {
@@ -272,11 +278,7 @@ struct ToolPartView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(toolBackgroundColor)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(toolAccentColor.opacity(0.14), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: DesignCorners.medium))
         .contextMenu {
             if !part.filePathsForNavigation.isEmpty {
                 ForEach(part.filePathsForNavigation, id: \.self) { path in

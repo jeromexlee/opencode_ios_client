@@ -109,21 +109,22 @@ struct DirectoryRow: View {
     let isLoading: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: DesignSpacing.sm) {
             Image(systemName: state.isFileExpanded(node.path) ? "chevron.down" : "chevron.right")
-                .font(.caption2)
+                .font(DesignTypography.micro)
                 .frame(width: 12)
             if isLoading {
                 ProgressView()
                     .scaleEffect(0.7)
             }
             Image(systemName: "folder.fill")
-                .foregroundStyle(.yellow)
+                .foregroundStyle(DesignColors.Brand.gold)
             Text(node.name)
+                .font(DesignTypography.body)
                 .lineLimit(1)
             Spacer()
         }
-        .padding(.leading, CGFloat(indent * 16))
+        .padding(.leading, CGFloat(indent) * DesignSpacing.lg)
     }
 }
 
@@ -134,25 +135,26 @@ struct FileRow: View {
 
     private var statusColor: Color {
         switch status {
-        case "added": return .green
-        case "deleted": return .red
-        case "modified", "untracked": return .orange
-        default: return .primary
+        case "added": return DesignColors.Semantic.success
+        case "deleted": return DesignColors.Semantic.error
+        case "modified", "untracked": return DesignColors.Semantic.warning
+        default: return DesignColors.Neutral.text
         }
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: DesignSpacing.sm) {
             Image(systemName: "chevron.right")
-                .font(.caption2)
+                .font(DesignTypography.micro)
                 .opacity(0)
                 .frame(width: 12)
             Image(systemName: "doc.text")
                 .foregroundStyle(statusColor)
             Text(node.name)
+                .font(DesignTypography.body)
                 .lineLimit(1)
             Spacer()
         }
-        .padding(.leading, CGFloat(indent * 16))
+        .padding(.leading, CGFloat(indent) * DesignSpacing.lg)
     }
 }
